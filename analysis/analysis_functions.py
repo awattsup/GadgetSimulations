@@ -11,6 +11,8 @@ from scipy.special import erf
 from scipy.optimize import curve_fit
 from mpi4py import MPI
 import sys
+import Find_H2_LGS
+import galcalc_ARHS
 
 
 def compare_pressures_spatial():
@@ -883,12 +885,21 @@ def EAGLEsnap():
 			# plt.show()
 
 
-			gas_Pextk = calc_Pextk_densityenergy(gas_densities, gas_internal_energy,lenunit='mpc')
-			Rmol_part = calc_Rmol(gas_Pextk)
-			HI_masses = gas_masses / (1.e0 + Rmol_part)
-			H2_masses = gas_masses - HI_masses 
+			# gas_Pextk = calc_Pextk_densityenergy(gas_densities, gas_internal_energy,lenunit='mpc')
+			# Rmol_part = calc_Rmol(gas_Pextk)
+			# HI_masses = gas_masses / (1.e0 + Rmol_part)
+			# H2_masses = gas_masses - HI_masses 
 			# plt.hist(np.log10(gas_Pextk))
 
+			# gas_neutral_fraction, fH2 = calc_fH2_LGS(gas,unitmass,a,h)
+			# H2_masses = gas_masses * gas_neutral_fraction * fH2
+			# HI_masses = gas_masses * gas_neutral_fraction * (1 - fH2)
+
+			HI_masses,H2_masses,gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
+
+			# print(gas_neutral_fraction)
+			# print(fH2)
+			# exit()
 
 			rad_stars, sigma_stars = calc_sigma(stars_coords_faceon, stars_masses, Rvir)
 			rad_stars_left, sigma_stars_left = calc_sigma(stars_coords_faceon[stars_coords_faceon[:,0]<0], stars_masses[stars_coords_faceon[:,0]<0], Rvir)
@@ -964,7 +975,7 @@ def EAGLEsnap():
 			sigma_ax.set_ylabel('log$_{10} \Sigma$ [M$_{\odot}$ pc$^{-2}$]', fontsize=15)
 			sigma_ax.legend(fontsize=12)
 			spec_ax.legend(fontsize=12)
-			spec_ax.set_title('EAGLE ID = {name}'.format(name=filename.split('ID')[-1].split('.')[0]),fontsize=12)
+			spec_ax.set_title('EAGLE ID = {name}  A$_{{fr}}$ = {A:.2f}'.format(name=filename.split('ID')[-1].split('.')[0],A=Afr),fontsize=12)
 			# plt.show()
 			outname = './figures/sigma_RC_spec_EAGLE{name}.png'.format(name=filename.split('ID')[-1].split('.')[0])
 			fig.savefig(outname, dpi=150)
@@ -981,18 +992,23 @@ def EAGLEsnap():
 
 # def read_TNGsnap(base)
 	
-def particle_info(a, h, part, unitmass, keys):
+def particle_info(a, h, part, unitmass, keys, cgs=False):
 
 	data = []
 	for key in keys:
 		group = part[key]
 		aexp = a**group.attrs['aexp-scale-exponent']
 		hexp = h**group.attrs['h-scale-exponent']
-		if 'Mass' in key:
-			data.append(np.array(group) * aexp * hexp * unitmass)
-		else:
-			data.append(np.array(group) * aexp * hexp)
+		CGSconv = group.attrs['CGSConversionFactor']
 
+		group = np.array(group) * aexp * hexp
+
+		if cgs == True:
+			group = group * CGSconv
+		elif 'Mass' in key:
+			group = group * unitmass
+
+		data.append(group)
 	return data	
 
 def calc_COM(coordinates,masses, Rvir = None):
@@ -1581,6 +1597,47 @@ def calc_Pextk_midpressure(stars_coordinates, stars_masses, gas_coordinates, gas
 	Pextk[np.abs(gas_coordinates[:,2]) > 1*hstar/1.e3] = 0
 
 	return Pextk
+
+def calc_fH2_LGS(gas, unitmass, a, h):
+	
+	Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
+	Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
+
+
+	[masses, densities, Z, Habundance, temperature, SFR] = \
+					particle_info(a, h, gas, unitmass, ['Mass','Density','Metallicity','ElementAbundance/Hydrogen'\
+														,'Temperature','StarFormationRate'],cgs=True)
+	
+	Z = Z/0.0127
+	fH2 = np.zeros(len(masses))
+	neut_frac = np.zeros(len(masses))
+	redshift = 1./a - 1.
+	Hmass = masses*Habundance
+
+	for i in range(len(masses)): 
+		neut_frac[i], fH2[i] = Find_H2_LGS.find_fH2(densities[i], Hmass[i], masses[i], Z[i], SFR[i], temperature[i], Hm2012_data, Rahmati2013, redshift)
+
+	return neut_frac, fH2
+
+def calc_HI_H2_ARHS(gas, unitmass, a, h):
+
+	Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
+	Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
+
+
+	[masses, densities, Z, Habundance, temperature, U, SFR] = \
+					particle_info(a, h, gas, unitmass, ['Mass','Density','Metallicity','ElementAbundance/Hydrogen'\
+														,'Temperature','InternalEnergy','StarFormationRate'],cgs=True)
+	masses =  masses / 1.989e33	
+	SFR = SFR * (3600*24*365.25) / 1.989e33
+	Z = Z
+	densities = densities * (3.086e18*3.086e18*3.086e18) / 1.989e33
+	U = U/(1.e4)
+	redshift = 1./a - 1.
+
+
+	HI_masses, H2_masses, neutral_masses = galcalc_ARHS.HI_H2_masses(masses,SFR,Z,densities,temperature,None,redshift)
+	return HI_masses,H2_masses,neutral_masses
 
 def calc_Rmol(Pextk, coeff = 'LR08'):
 
