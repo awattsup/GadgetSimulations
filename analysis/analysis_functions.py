@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import FormatStrFormatter
 from matplotlib.colorbar import Colorbar
+from matplotlib.lines import Line2D
 import h5py
 import glob
 from astropy.convolution import convolve, Gaussian2DKernel
@@ -757,8 +758,16 @@ def EAGLEsnap():
 	# filename = '/media/data/simulations/EAGLE_galaxies/EAGLE_galaxyID8132670.hdf5'
 	# filename = '/media/data/simulations/EAGLE_galaxies/EAGLE_galaxyID2948350.hdf5'
 	# filename = '/media/data/simulations/EAGLE_galaxies/EAGLE_galaxyID2979098.hdf5'
+	Afr_list = []
+	Afr_err_list = []
+	sersic_list = []
+	DM_offsets = []
+	gas_offsets = []
+	stars_offsets = []
+	Mgroup_list = []
+	lgGF_list = []
+	ID_list = []
 	for filename in filenames:
-
 		file = h5py.File(filename,'r')
 		ID = int(filename.split('ID')[-1].split('.')[0])
 		catref = np.where(np.array(catalogue['GalaxyID']) == ID)[0]
@@ -785,28 +794,19 @@ def EAGLEsnap():
 
 			COP = np.array(catalogue['CentreOfPotential_x','CentreOfPotential_y','CentreOfPotential_z'][catref])[0]
 			COM = np.array(catalogue['CentreOfMass_x','CentreOfMass_y','CentreOfMass_z'][catref])[0]
+			COV = np.array(catalogue['Velocity_x','Velocity_y','Velocity_z'][catref])[0]
+			COP_group = np.array(catalogue['GroupCentreOfPotential_x','GroupCentreOfPotential_y','GroupCentreOfPotential_z'][catref])[0]
+			
 			COP = np.array([i for i in COP])
+			COP_group = np.array([i for i in COP_group])
 			COM = np.array([i for i in COM])
+			COV = np.array([i for i in COV])
 			print(COP)
 			print(COM)
-
-			# COM_DM = calc_COM(DM_coordinates, DM_masses)
-			# DM_coordinates -= COM_DM
-			# for ii in range(10):
-			# 	DM_radii = np.sqrt(np.nansum(DM_coordinates**2.e0, axis=1))
-			# 	COM = calc_COM(DM_coordinates[DM_radii < 0.15], DM_masses[DM_radii < 0.15])
-			# 	DM_coordinates -= COM
-			# 	COM_DM -= COM
-			# 	# print(COM)
-			# print(COM_DM)
-			# print(COP[0] - COM_DM[0], COP[1] - COM_DM[1], COP[2] - COM_DM[2])
-			# print(np.sqrt(np.nansum(np.array([COP[0] - COM_DM[0], COP[1] - COM_DM[1], COP[2] - COM_DM[2]])**2.e0)))
-			# print('.......')
 
 			DM_coordinates -= COP
 			gas_coordinates -= COP
 			stars_coordinates -= COP
-
 
 			stars_radii = np.sqrt(np.nansum(stars_coordinates**2.e0, axis=1))
 			gas_radii = np.sqrt(np.nansum(gas_coordinates**2.e0, axis=1))
@@ -849,11 +849,17 @@ def EAGLEsnap():
 			gas_coordinates *= 1.e3
 			stars_coordinates *= 1.e3
 
+			DM_velocities -= COV
+			gas_velocities -= COV
+			stars_velocities -= COV
+
+			COM_stars_tot = np.array([0.,0.,0.])
 			
-			COM_gas = calc_COM(gas_coordinates, gas_masses, Rmax = 0.1*Rvir)
 			COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.1*Rvir)
 			gas_coordinates -= COM_stars
 			stars_coordinates -= COM_stars
+
+			COM_stars_tot -= COM_stars
 
 			eigvec = orientation_matrix(stars_coordinates, stars_masses)
 
@@ -862,14 +868,11 @@ def EAGLEsnap():
 			DM_coordinates = DM_coordinates @ eigvec
 
 
-			COM_gas = calc_COM(gas_coordinates, gas_masses, Rmax = 0.2*Rvir,Zmax=0.1*Rvir)
 			COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.2*Rvir,Zmax=0.1*Rvir)
 			gas_coordinates -= COM_stars
 			stars_coordinates -= COM_stars
+			COM_stars_tot -= COM_stars
 
-			# print(COM_stars)
-			# print(COM_gas)
-			# print('...')
 
 			HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
 			HI_masses = HI_masses[gas_radii <= Rvir/1.e3]
@@ -880,88 +883,105 @@ def EAGLEsnap():
 			stars_velocities = stars_velocities @ eigvec
 
 			COV_gas = calc_COV(gas_coordinates, gas_velocities, gas_masses,Rmax = 0.1*Rvir,Zmax = 0.05*Rvir)
-			print(COV_gas)
 			gas_velocities -=  COV_gas
 
+			rad_points, stellar_sigma = calc_sigma(stars_coordinates,stars_masses,Rmax=40,Zmax=20)
 
-			
+			fit_params, fit_covar = curve_fit(log_sersic,rad_points[rad_points<10],stellar_sigma[rad_points<10])
 
+			sersic_N = fit_params[2]
+			stars_radii = np.sqrt(np.nansum(stars_coordinates**2.e0, axis=1))
 
+			sersic_N = np.nansum(stars_masses[stars_radii<5]) / (np.pi*5*5) # Msun/kpc^2
 
-			# # plt.scatter(stars_coordinates[:,0],stars_coordinates[:,2],s=0.01)
-			# # plt.xlim([-40,40])
-			# # plt.ylim([-40,40])
-			# # plt.show()
+			M_group = catalogue['Group_M_Crit200'][catref][0]
+			Rvir_group = catalogue['Group_R_Crit200'][catref][0]
 
-			# eigvec = orientation_matrix(stars_coordinates, stars_masses)
+			COM_DM = calc_COM(DM_coordinates, DM_masses, Rmax = Rvir)
+			COM_gas = calc_COM(gas_coordinates, gas_masses, Rmax = Rvir)
 
-			# stars_coordinates = stars_coordinates @ eigvec
-			# gas_coordinates = gas_coordinates @ eigvec
-			# DM_coordinates = DM_coordinates @ eigvec
-
-			# # plt.scatter(stars_coordinates[:,0],stars_coordinates[:,2],s=0.01)
-			# # plt.xlim([-40,40])
-			# # plt.ylim([-40,40])
-			# # plt.colorbar()
-			# # plt.show()
-
-			# HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
-			# HI_masses = HI_masses[gas_radii<=Rvir/1.e3]
-			# H2_masses = H2_masses[gas_radii<=Rvir/1.e3]
-
-			# for ii in range(3):
-			# 	if ii == 0:
-			# 		COV_gas = calc_COV(gas_coordinates, gas_velocities, gas_masses, Rvir)
-			# 	if ii == 1:
-			# 		COV_gas = calc_COV(gas_coordinates, gas_velocities, HI_masses, Rvir)
-			# 	if ii == 2:
-			# 		COV_gas = calc_COV(gas_coordinates, gas_velocities, H2_masses, Rvir)
-			# 	print(COV_gas)
-			# 	gas_velocities1 = gas_velocities -  COV_gas
-			# 	gas_velocities1 = gas_velocities1 @ eigvec
-			# 	gas_coords_faceon = calc_coords_obs(gas_coordinates, 0, 0)
-			# 	gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 90)
-
-			# 	stars_coords_faceon = calc_coords_obs(stars_coordinates, 0, 0)
-			# 	stars_coords_edgeon = calc_coords_obs(stars_coordinates, 0, 90)
-
-			# 	DM_coords_faceon = calc_coords_obs(DM_coordinates, 0, 0)
-			# 	DM_coords_edgeon = calc_coords_obs(DM_coordinates, 0, 90)
-
-			# 	gas_vel_edgeon = calc_vel_obs(gas_velocities1, 0 , 90)
-
-			# 	vel_bins,spectrum = calc_spectrum(gas_coords_edgeon,gas_vel_edgeon,HI_masses,beamsize=60)
-			# 	plt.plot(vel_bins,spectrum)
-			# plt.show()
-			# exit()
-
-			# plt.scatter(gas_coords_edgeon[:,0],gas_coords_edgeon[:,1],s=0.05,c=gas_vel_edgeon)
-			# plt.xlim([-40,40])
-			# plt.ylim([-40,40])
-			# plt.colorbar()
-			# plt.show()
+			COM_offset_DM = np.sqrt(np.nansum((COP_group - COP - COM_DM)**2.e0))/Rvir_group
+			COM_offset_gas = np.sqrt(np.nansum((COP_group - COP - COM_stars_tot - COM_gas)**2.e0))/Rvir_group
+			COM_offset_stars = np.sqrt(np.nansum((COP_group - COP - COM_stars_tot)**2.e0))/Rvir_group
 
 
-			# gas_Pextk = calc_Pextk_densityenergy(gas_densities, gas_internal_energy,lenunit='mpc')
-			# Rmol_part = calc_Rmol(gas_Pextk)
-			# HI_masses = gas_masses / (1.e0 + Rmol_part)
-			# H2_masses = gas_masses - HI_masses 
-			# plt.hist(np.log10(gas_Pextk))
+			theta_range = np.arccos(2. * np.arange(0, 1, 0.05) - 1.) * 180./np.pi
+			phi_range = np.linspace(0, 360, 25)
+			Afr_dist = []
+			for theta in theta_range:
+				for phi in phi_range:
+					gas_coords_edgeon = calc_coords_obs(gas_coordinates, phi, theta)
+					gas_vel_edgeon = calc_vel_obs(gas_velocities, phi, theta)
 
+					vel, spectrum = calc_spectrum(gas_coords_edgeon, gas_vel_edgeon, HI_masses, beamsize=40)
+					PeaklocL, PeaklocR = locate_peaks(spectrum)
+					widths = locate_width(spectrum, [spectrum[PeaklocL],spectrum[PeaklocR]], 0.2)
+					# widths = np.where(spectrum > 3)[0][[0,-1]]
+					Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+					Afr_dist.extend([Afr])
+
+
+			Afr_list.extend([np.median(Afr_dist)])
+			Afr_err_list.extend([median_absolute_deviation(Afr_dist)])
+			sersic_list.extend([np.log10(sersic_N)])
+			DM_offsets.extend([COM_offset_DM])
+			gas_offsets.extend([COM_offset_gas])
+			stars_offsets.extend([COM_offset_stars])
+			Mgroup_list.extend([M_group])
+			lgGF_list.extend([np.log10(np.nansum(HI_masses)/np.nansum(stars_masses))])
+			ID_list.extend([ID])
 			# gas_neutral_fraction, fH2 = calc_fH2_LGS(gas,unitmass,a,h)
 			# H2_masses = gas_masses * gas_neutral_fraction * fH2
 			# HI_masses = gas_masses * gas_neutral_fraction * (1 - fH2)
 
-			# print(gas_neutral_fraction)
-			# print(fH2)
-			# exit()
 
-			plotgas_spatial_radial_profile(filename,DM_coordinates, DM_masses, stars_coordinates,stars_masses,\
-				gas_coordinates, gas_velocities, HI_masses, save=True)
+			# plotgas_spatial_radial_profile(filename,DM_coordinates, DM_masses, stars_coordinates,stars_masses,\
+				# gas_coordinates, gas_velocities, HI_masses, save=True)
 
+			# COV_Per_offset(Rvir,filename,DM_coordinates,DM_velocities, DM_masses, stars_coordinates,stars_velocities,\
+			 # stars_masses, gas_coordinates, gas_velocities, gas_masses, HI_masses, save=True)
 			# COM_COP_offset(Rvir,filename,DM_coordinates, DM_masses, stars_coordinates, stars_masses, gas_coordinates, gas_masses,HI_masses,save=True)
+			print(ID,Afr,np.log10(M_group),np.log10(np.nansum(HI_masses)/np.nansum(stars_masses)))
+	
+	fig = plt.figure(figsize=(16,8))
+	gs = gridspec.GridSpec(2,2,wspace=0.25,hspace=0.25,left=0.05,right=0.95) 
+	sersic_ax = fig.add_subplot(gs[0,0])
+	offsets_ax = fig.add_subplot(gs[0,1],sharey = sersic_ax)
+	Mgroup_ax = fig.add_subplot(gs[1,0],sharey = sersic_ax)
+	lgGF_ax = fig.add_subplot(gs[1,1],sharey = sersic_ax)
+
+	sersic_ax.set_ylabel('Asymmetry measure Afr',fontsize=13)
+	offsets_ax.set_ylabel('Asymmetry measure Afr',fontsize=13)
+	Mgroup_ax.set_ylabel('Asymmetry measure Afr',fontsize=13)
+	lgGF_ax.set_ylabel('Asymmetry measure Afr',fontsize=13)
+
+	sersic_ax.set_xlabel('$\mu_\star$ < 5kpc [Msun kpc$^{-2}$]',fontsize=13)
+	offsets_ax.set_xlabel('COM offset',fontsize=13)
+	Mgroup_ax.set_xlabel('Group Halo mass [Msun]',fontsize=13)
+	lgGF_ax.set_xlabel('log10 HI gas fraction',fontsize=13)
 
 
+	for ii in range(len(Afr_list)):
+		sersic_ax.errorbar(sersic_list[ii],Afr_list[ii],marker='o',yerr = Afr_err_list[ii],c='C{}'.format(ii))
+		offsets_ax.scatter(DM_offsets[ii],Afr_list[ii],marker='s',c='C{}'.format(ii))
+		offsets_ax.scatter(gas_offsets[ii],Afr_list[ii],marker='o',c='C{}'.format(ii))
+		offsets_ax.scatter(stars_offsets[ii],Afr_list[ii],marker='*',c='C{}'.format(ii))
+		Mgroup_ax.errorbar(np.log10(Mgroup_list[ii]),Afr_list[ii],marker='o',yerr = Afr_err_list[ii],c='C{}'.format(ii))
+		lgGF_ax.errorbar(lgGF_list[ii],Afr_list[ii],marker='o',yerr = Afr_err_list[ii],c='C{}'.format(ii))
+
+	offsets_leg = [Line2D([0],[0],color='Black',marker='s',ls=''),
+					Line2D([0],[0],color='Black',marker='o',ls=''),
+					Line2D([0],[0],color='Black',marker='*',ls='')]
+	offsets_ax.legend(offsets_leg,['DM','Gas','Stars'])
+
+
+	leg = [Line2D([0],[0],ls='',marker='o',color='C{}'.format(ii)) for ii in range(len(Afr_list))]				
+	lgGF_ax.legend(leg, ID_list)
+
+
+
+	plt.show()
+	exit()
 
 
 
@@ -1056,6 +1076,44 @@ def COM_COP_offset(Rvir,filename,DM_coordinates, DM_masses, stars_coordinates, s
 	ax.legend(fontsize=12)
 	if save == True:
 		outname = './figures/COM_offsets_EAGLE{name}.png'.format(name=filename.split('ID')[-1].split('.')[0])
+		fig.savefig(outname, dpi=150)
+	else:
+		plt.show()
+		plt.close()
+
+def COV_Per_offset(Rvir,filename,DM_coordinates,DM_velocities, DM_masses, stars_coordinates,stars_velocities, \
+	stars_masses, gas_coordinates, gas_velocities, gas_masses, HI_masses, save=False):
+	COV_gas = calc_COV(gas_coordinates, gas_velocities, gas_masses, Rmax = Rvir)
+	COV_HI = calc_COV(gas_coordinates, gas_velocities, HI_masses, Rmax = Rvir)
+	COV_stars = calc_COV(stars_coordinates, stars_velocities, stars_masses, Rmax = Rvir)
+	COV_DM = calc_COV(DM_coordinates, DM_velocities, DM_masses, Rmax = Rvir)
+
+	COV_offset_gas = np.sqrt(np.nansum((np.array([0,0,0])- COV_gas)**2.e0))
+	COV_offset_HI = np.sqrt(np.nansum((np.array([0,0,0])- COV_HI)**2.e0))
+	COV_offset_stars = np.sqrt(np.nansum((np.array([0,0,0]) - COV_stars)**2.e0))
+	COV_offset_DM = np.sqrt(np.nansum((np.array([0,0,0]) - COV_DM)**2.e0))
+
+	COV_gas_disk = calc_COV(gas_coordinates, gas_velocities, gas_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COV_HI_disk = calc_COV(gas_coordinates, gas_velocities, HI_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COV_stars_disk = calc_COV(stars_coordinates, stars_velocities, stars_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COV_DM_disk = calc_COV(DM_coordinates, DM_velocities, DM_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+
+	COV_offset_gas_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_gas_disk)**2.e0))
+	COV_offset_HI_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_HI_disk)**2.e0))
+	COV_offset_stars_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_stars_disk)**2.e0))
+	COV_offset_DM_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_DM_disk)**2.e0))
+
+	fig, ax = plt.subplots()
+	# ax.set_ylim([0,0.2])
+	ax.scatter([0,1,2,3],[COV_offset_gas,COV_offset_HI,COV_offset_DM, COV_offset_stars],color='Blue',label = 'Within Rvir')
+	ax.scatter([0,1,2,3],[COV_offset_gas_disk,COV_offset_HI_disk,COV_offset_DM_disk, COV_offset_stars_disk],color='Red',label = 'Within disk')
+	ax.set_xticks([0,1,2,3])
+	ax.set_xticklabels(['Gas','HI','DM','Stars'],fontsize=12)
+	ax.set_ylabel('Offset from Peculiar velocity [km/s]',fontsize=12)
+	ax.set_title('EAGLE ID = {name}, Rvir = {Rvir:.2f}'.format(name=filename.split('ID')[-1].split('.')[0],Rvir=Rvir),fontsize=12)
+	ax.legend(fontsize=12)
+	if save == True:
+		outname = './figures/COV_offsets_EAGLE{name}.png'.format(name=filename.split('ID')[-1].split('.')[0])
 		fig.savefig(outname, dpi=150)
 	else:
 		plt.show()
@@ -1393,7 +1451,7 @@ def plotgas_spatial_radial_profile(name, DM_coordinates, DM_masses, stars_coordi
 
 			vel, spectrum_left = calc_spectrum(gas_coords_edgeon[left], gas_vel_edgeon[left], HI_masses[left], beamsize = beamsizes[bb])
 			vel, spectrum_right = calc_spectrum(gas_coords_edgeon[right], gas_vel_edgeon[right], HI_masses[right], beamsize = beamsizes[bb] )
-			vel, spectrum = calc_spectrum(gas_coords_edgeon[radii < radmax], gas_vel_edgeon[radii < radmax], HI_masses, beamsize = beamsizes[bb])
+			vel, spectrum = calc_spectrum(gas_coords_edgeon[radii < radmax], gas_vel_edgeon[radii < radmax], HI_masses[radii < radmax], beamsize = beamsizes[bb])
 		
 			PeaklocL, PeaklocR = locate_peaks(spectrum)
 			widths = locate_width(spectrum, [spectrum[PeaklocL],spectrum[PeaklocR]], 0.2)
@@ -1432,7 +1490,7 @@ def plotgas_spatial_radial_profile(name, DM_coordinates, DM_masses, stars_coordi
 		sigma_ax.legend(fontsize=12)
 		spec_ax.legend(fontsize=12)
 		if save == True:
-			outname = './figures/sigma_RC_spec_EAGLE{name}.png'.format(name=name.split('ID')[-1].split('.')[0])
+			outname = './figures/sigma_RC_spec_EAGLE{name}_COVpercstarsCOM.png'.format(name=name.split('ID')[-1].split('.')[0])
 			fig.savefig(outname, dpi=150)
 		else:
 			plt.show()
@@ -1591,8 +1649,12 @@ def hstar_from_radfit(coordinates, masses, Rmax):
 	return hstar
 
 def disk_exp(rad, A, Rstar):
-	d = A - (rad/Rstar)*np.log10(np.exp(1))
+	d = A - (rad/Rstar)*np.log(10)
 	return d
+
+def log_sersic(rad,A,Rstar,N):
+	e = A - np.log(10)*((rad/Rstar)**(1./N))
+	return e
 
 def calc_coords_obs(coordinates, view_phi, view_theta):
 	view_theta *= np.pi/180.e0
@@ -1999,6 +2061,14 @@ def areal_asymmetry(spectrum, limits, Vres):
 def size_mass_relation(MHI):
 	DHI = 10.e0**(0.506*np.log10(MHI)-3.293)	#kpc Wang+16
 	return DHI
+
+def median_absolute_deviation(data, scale=True):
+	med = np.median(data)
+	MAD = np.median(np.abs(data - med))
+	if scale == True:
+		MAD *= 1.4826
+	return MAD
+
 
 def create_datacube(tt, filename, incl, gas_coordinates, gas_velocities, gas_masses):
 
