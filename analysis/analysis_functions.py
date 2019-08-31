@@ -862,7 +862,7 @@ def EAGLEsnap():
 			COM_stars_tot -= COM_stars
 
 			eigvec = orientation_matrix(stars_coordinates, stars_masses)
-
+			exit()
 			stars_coordinates = stars_coordinates @ eigvec
 			gas_coordinates = gas_coordinates @ eigvec
 			DM_coordinates = DM_coordinates @ eigvec
@@ -1148,12 +1148,19 @@ def orientation_matrix(coordinates, masses):
 	Iprev = [[1,0,0],[0,1,0],[0,0,1]]
 	eigvec_list = []
 
-	rad = [1,2,3,4,5,6,8,10,12,14,16,18,20,25,30,35,40,45,50,55,60,80,100,150,200]		#kpc
-	ii = 0
+	rad = [1,2,3,4,5,6,8,10,11,12,13,14,15,16,17,18,19,20,25,30,35,40,45,50,55,60,80,100,150,200]		#kpc
+	rr = 0
 	Idiff = 1
 	while(Idiff > 1.e-4):
-		eigvec = diagonalise_inertia(coordinates, masses, rad[ii])
+		# print(rr,rad[rr])
+		# eigvec = diagonalise_inertia(coordinates, masses, rad[rr])
+		eigvec = diagonalise_inertia(coordinates, masses, 5)				#not sure why 5kpc works, but most galaxies converge to x-y orientation
 		coordinates = coordinates @ eigvec
+		plt.scatter(coordinates[:,0],coordinates[:,2],s=0.05)
+		plt.xlim([-40,40])
+		plt.ylim([-40,40])
+		plt.show()
+		plt.close()
 		eigvec_list.append(eigvec)
 
 		I = np.zeros([3,3])
@@ -1166,8 +1173,10 @@ def orientation_matrix(coordinates, masses):
 					I[ii,jj] = -1.e0*np.nansum(coordinates[:,ii]*coordinates[:,jj]*masses)
 
 		Idiff = np.abs((I[2][2] - Iprev[2][2]) / Iprev[2][2])
+		print(Idiff)
 		Iprev = I
-		ii+=1
+		# rr+=1
+
 
 	eigvec = eigvec_list[0]
 	for ii in range(1,len(eigvec_list)):
