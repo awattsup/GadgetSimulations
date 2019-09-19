@@ -7,6 +7,7 @@ from matplotlib.colorbar import Colorbar
 from matplotlib.lines import Line2D
 import h5py
 import glob
+import numpy.random as nprand
 from astropy.convolution import convolve, Gaussian2DKernel
 from scipy.special import erf
 from scipy.optimize import curve_fit
@@ -434,6 +435,140 @@ def measure_controlled_run():
 		# H2edgeon_mom0 = np.loadtxt('{dir}/data/snap{tt}_H2edgeon_mom0.txt'.format(dir=basedir,tt=str(tt).zfill(3)))
 		# HIfaceon_mom0 = np.loadtxt('{dir}/data/snap{tt}_HIfaceon_mom0.txt'.format(dir=basedir,tt=str(tt).zfill(3)))
 		# HIedgeon_mom0 = np.loadtxt('{dir}/data/snap{tt}_HIedgeon_mom0.txt'.format(dir=basedir,tt=str(tt).zfill(3)))
+
+def resolution_test():
+
+	basedir = sys.argv[1]
+	theta = 90.				#inclination
+	phi = 0.				#position angle
+	view_theta = theta*np.pi/180.e0 
+	view_phi = phi*np.pi/180.e0  
+
+	unitmass = 1.e10
+	
+	snaplist = np.arange(0,101)
+	snaplist = [0]
+
+	for ii in snaplist:#range(rank,len(snaplist),nproc):
+		tt = snaplist[ii]
+		# print(rank,tt)
+
+		filename = '{dir}snaps/snapshotGD2_{tt}.hdf5'.format(dir=basedir, tt=str(tt).zfill(3))
+		file = h5py.File(filename,'r')
+		parttypes = list(file.keys())
+		head = file['Header']
+		DM = file['PartType1']
+		disk = file['PartType2']
+		gas = file['PartType0']
+
+		[DM_coordinates, DM_masses, DM_velocities] = \
+			particle_info(1,1,DM, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+		[gas_coordinates, gas_masses, gas_velocities, gas_densities, \
+			gas_internal_energy] = particle_info(1,1,gas, unitmass, ['Coordinates','Masses',\
+				'Velocities','Density','InternalEnergy'],comoving=False)
+		[disk_coordinates, disk_masses, disk_velocities] = \
+			particle_info(1,1,disk, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+		if 'PartType5' in parttypes:
+			newstars = file['PartType5']
+
+			[newstars_coordinates, newstars_masses, newstars_velocities] = \
+			particle_info(1,1,newstars, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+			stars_coordinates = np.append(stars_coordinates, newstars_coordinates, axis=0)
+			stars_masses = np.append(stars_masses, newstars_masses)
+			stars_velocities = np.append(stars_velocities, newstars_velocities)
+		else:
+			stars_coordinates = disk_coordinates
+			stars_masses = disk_masses
+			stars_velocities = disk_velocities
+
+		COM_DM = calc_COM(DM_coordinates,DM_masses,5.e3)
+
+		DM_coordinates -= COM_DM
+		stars_coordinates -= COM_DM
+		disk_coordinates -= COM_DM
+		gas_coordinates -= COM_DM
+
+		gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 90)
+		gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 90)
+
+
+		gas_masses_unit = gas_masses *unitmass
+		gas_SFR = np.zeros(len(gas_masses))
+		gas_Z = np.zeros(len(gas_masses))+0.001
+		gas_density_unit = gas_densities * (1.e3*1.e3*1.e3)/ unitmass
+		gas_internal_energy_unit = gas_internal_energy * 1.e5*1.e5
+
+
+		HI_masses, H2_masses, gas_neutral_masses = galcalc_ARHS.HI_H2_masses(
+			gas_masses_unit,gas_SFR,gas_Z,gas_density_unit,gas_internal_energy_unit,None,0, mode='u')
+		# HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
+
+		specfig = plt.figure(figsize=(10,8))
+		spec_gs = gridspec.GridSpec(1,1) 
+		spec_ax = specfig.add_subplot(spec_gs[0,0])
+		spec_ax.set_xlabel('Velocity')
+		spec_ax.set_ylabel('Spectral flux')
+		spec_ax.set_ylim([0,75])
+
+		Afrfig = plt.figure(figsize=(10,8))
+		Afr_gs = gridspec.GridSpec(1,1) 
+		Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
+		Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$')
+		Afr_ax.set_xlabel('Number of particles')
+		Afr_ax.set_xscale('log')
+
+
+		# Npart_list = [50,100,400,700,1000,2000,5000,10000,50000,100000,500000,1000000]
+		phi_list = [0,45,90]
+		theta_list = [90,50,20]
+		Npart_list = [50,100,500,1000,5000,10000,50000,100000,500000,len(HI_masses)]
+		ls = ['-','--',':']
+		Afr_list = np.zeros([len(Npart_list),len(phi_list)*len(theta_list)])
+		for nn in range(len(Npart_list)):
+			Npart = Npart_list[nn]
+
+			particle_sample = nprand.choice(range(len(HI_masses)), Npart)
+
+			HI_masses_temp = HI_masses * len(HI_masses) / Npart
+			vel, spectrum = calc_spectrum(gas_coords_edgeon[particle_sample,:], 
+				gas_vel_edgeon[particle_sample], HI_masses_temp[particle_sample], beamsize=40)
+			
+			spec_ax.plot(vel, spectrum, label='Number of particles = {}'.format(Npart))
+
+
+			for pp in range(len(phi_list)):
+				for tt in range(len(theta_list)):
+					phi = phi_list[pp]
+					theta = theta_list[tt]
+
+					gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
+					gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
+
+					vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
+					gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize=40)
+
+					Peak = np.nanmax(spectrum)
+					# print(PeaklocL)
+					# PeaklocL, PeaklocR = locate_peaks(spectrum)
+					widths = locate_width(spectrum, [Peak,Peak], 0.2)
+					# print(widths)
+					Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+					Afr_list[nn,pp*len(phi_list)+tt] = Afr
+		
+		for pp in range(len(phi_list)):
+				for tt in range(len(theta_list)):
+					Afr_ax.plot(Npart_list, Afr_list[:,pp*len(phi_list)+tt], ls = ls[tt], color='C{}'.format(pp))
+
+		
+		spec_ax.legend()
+		plt.show()
+		spec_figname = '{dir}/figures/snaps{tt}_spec_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
+		Afr_figname = '{dir}/figures/snaps{tt}_Afr_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
+
+		specfig.savefig(spec_figname, dpi=200)
+		Afrfig.savefig(Afr_figname, dpi=200)
 
 def plot_controlled_run():
 
@@ -989,23 +1124,32 @@ def EAGLEsnap():
 
 # def read_TNGsnap(base)
 	
-def particle_info(a, h, part, unitmass, keys, cgs=False):
+def particle_info(a, h, part, unitmass, keys, cgs=False, comoving=True):
 
 	data = []
-	for key in keys:
-		group = part[key]
-		aexp = a**group.attrs['aexp-scale-exponent']
-		hexp = h**group.attrs['h-scale-exponent']
-		CGSconv = group.attrs['CGSConversionFactor']
+	if comoving == True:
+		for key in keys:
+			group = part[key]
+			aexp = a**group.attrs['aexp-scale-exponent']
+			hexp = h**group.attrs['h-scale-exponent']
+			CGSconv = group.attrs['CGSConversionFactor']
 
-		group = np.array(group) * aexp * hexp
+			group = np.array(group) * aexp * hexp
 
-		if cgs == True:
-			group = group * CGSconv
-		elif 'Mass' in key:
-			group = group * unitmass
+			if cgs == True:
+				group = group * CGSconv
+			elif 'Mass' in key:
+				group = group * unitmass
 
-		data.append(group)
+			data.append(group)
+	else:
+		for key in keys:
+			group = np.array(part[key])
+
+			if 'Mass' in key:
+				group = group * unitmass
+
+			data.append(group)
 	return data	
 
 def calc_COM(coordinates, masses, Rmax = None, Zmax = None):
@@ -1138,7 +1282,7 @@ def diagonalise_inertia(coordinates, masses, rad):
 	eigval_argsort = eigval.argsort()
 	# eigval = eigval[eigval_argsort]
 	# eigvec = eigvec[eigval_argsort]
-	eigvec = np.linalg.inv(eigvec)
+	# eigvec = np.linalg.inv(eigvec)
 	eigvec = eigvec[eigval_argsort]
 
 	return eigvec	
@@ -1155,7 +1299,7 @@ def orientation_matrix(coordinates, masses):
 		# print(rr,rad[rr])
 		# eigvec = diagonalise_inertia(coordinates, masses, rad[rr])
 		eigvec = diagonalise_inertia(coordinates, masses, 5)				#not sure why 5kpc works, but most galaxies converge to x-y orientation
-		coordinates = coordinates @ eigvec
+		coordinates = coordinates @ eigvec 
 		plt.scatter(coordinates[:,0],coordinates[:,2],s=0.05)
 		plt.xlim([-40,40])
 		plt.ylim([-40,40])
@@ -1176,6 +1320,11 @@ def orientation_matrix(coordinates, masses):
 		print(Idiff)
 		Iprev = I
 		# rr+=1
+		plt.scatter(coordinates[:,0],coordinates[:,2],s=0.1)
+		plt.xlim([-40,40])
+		plt.ylim([-40,40])
+		plt.show()
+		plt.close()
 
 
 	eigvec = eigvec_list[0]
@@ -2227,4 +2376,6 @@ if __name__ == '__main__':
 
 	# analyse_datacube()
 
-	EAGLEsnap()
+	# EAGLEsnap()
+
+	resolution_test()
