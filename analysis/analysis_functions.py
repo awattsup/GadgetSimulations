@@ -510,7 +510,7 @@ def resolution_test():
 		spec_ax = specfig.add_subplot(spec_gs[0,0])
 		spec_ax.set_xlabel('Velocity')
 		spec_ax.set_ylabel('Spectral flux')
-		spec_ax.set_ylim([0,75])
+		spec_ax.set_ylim([0,40])
 
 		Afrfig = plt.figure(figsize=(10,8))
 		Afr_gs = gridspec.GridSpec(1,1) 
@@ -561,8 +561,11 @@ def resolution_test():
 				for tt in range(len(theta_list)):
 					Afr_ax.plot(Npart_list, Afr_list[:,pp*len(phi_list)+tt], ls = ls[tt], color='C{}'.format(pp))
 
-		
-		spec_ax.legend()
+		leg = [Line2D([0],[0],ls='-',color='Black'),
+				Line2D([0],[0],ls='--',color='Black'),
+				Line2D([0],[0],ls=':',color='Black')]				
+		Afr_ax.legend(leg,labels=['i = 90', 'i = 50', 'i = 20'])
+		spec_ax.legend(fontsize=10)
 		plt.show()
 		spec_figname = '{dir}/figures/snaps{tt}_spec_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
 		Afr_figname = '{dir}/figures/snaps{tt}_Afr_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
