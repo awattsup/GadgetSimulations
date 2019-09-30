@@ -438,6 +438,10 @@ def measure_controlled_run():
 
 def resolution_test():
 
+	comm = MPI.COMM_WORLD
+	rank = comm.Get_rank()
+	nproc = comm.Get_size()
+
 	basedir = sys.argv[1]
 	theta = 90.				#inclination
 	phi = 0.				#position angle
@@ -447,131 +451,151 @@ def resolution_test():
 	unitmass = 1.e10
 	
 	snaplist = np.arange(0,101)
-	snaplist = [0]
+	snaplist = [0,25,50,75]
+	plot = False
 
-	for ii in snaplist:#range(rank,len(snaplist),nproc):
-		tt = snaplist[ii]
-		# print(rank,tt)
+	if plot:
+		# specfig = plt.figure(figsize=(10,8))
+		# spec_gs = gridspec.GridSpec(1,1) 
+		# spec_ax = specfig.add_subplot(spec_gs[0,0])
+		# spec_ax.set_xlabel('Velocity')
+		# spec_ax.set_ylabel('Spectral flux')
+		# spec_ax.set_ylim([0,40])
 
-		filename = '{dir}snaps/snapshotGD2_{tt}.hdf5'.format(dir=basedir, tt=str(tt).zfill(3))
-		file = h5py.File(filename,'r')
-		parttypes = list(file.keys())
-		head = file['Header']
-		DM = file['PartType1']
-		disk = file['PartType2']
-		gas = file['PartType0']
+		# Afrfig = plt.figure(figsize=(10,8))
+		# Afr_gs = gridspec.GridSpec(1,1) 
+		# Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
+		# Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$')
+		# Afr_ax.set_xlabel('Number of particles')
+		# Afr_ax.set_xscale('log')
 
-		[DM_coordinates, DM_masses, DM_velocities] = \
-			particle_info(1,1,DM, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
-		[gas_coordinates, gas_masses, gas_velocities, gas_densities, \
-			gas_internal_energy] = particle_info(1,1,gas, unitmass, ['Coordinates','Masses',\
-				'Velocities','Density','InternalEnergy'],comoving=False)
-		[disk_coordinates, disk_masses, disk_velocities] = \
-			particle_info(1,1,disk, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
-
-		if 'PartType5' in parttypes:
-			newstars = file['PartType5']
-
-			[newstars_coordinates, newstars_masses, newstars_velocities] = \
-			particle_info(1,1,newstars, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
-
-			stars_coordinates = np.append(stars_coordinates, newstars_coordinates, axis=0)
-			stars_masses = np.append(stars_masses, newstars_masses)
-			stars_velocities = np.append(stars_velocities, newstars_velocities)
-		else:
-			stars_coordinates = disk_coordinates
-			stars_masses = disk_masses
-			stars_velocities = disk_velocities
-
-		COM_DM = calc_COM(DM_coordinates,DM_masses,5.e3)
-
-		DM_coordinates -= COM_DM
-		stars_coordinates -= COM_DM
-		disk_coordinates -= COM_DM
-		gas_coordinates -= COM_DM
-
-		gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 90)
-		gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 90)
+		# ls = ['-','--',':']
 
 
-		gas_masses_unit = gas_masses *unitmass
-		gas_SFR = np.zeros(len(gas_masses))
-		gas_Z = np.zeros(len(gas_masses))+0.001
-		gas_density_unit = gas_densities * (1.e3*1.e3*1.e3)/ unitmass
-		gas_internal_energy_unit = gas_internal_energy * 1.e5*1.e5
-
-
-		HI_masses, H2_masses, gas_neutral_masses = galcalc_ARHS.HI_H2_masses(
-			gas_masses_unit,gas_SFR,gas_Z,gas_density_unit,gas_internal_energy_unit,None,0, mode='u')
-		# HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
-
-		specfig = plt.figure(figsize=(10,8))
-		spec_gs = gridspec.GridSpec(1,1) 
-		spec_ax = specfig.add_subplot(spec_gs[0,0])
-		spec_ax.set_xlabel('Velocity')
-		spec_ax.set_ylabel('Spectral flux')
-		spec_ax.set_ylim([0,40])
-
-		Afrfig = plt.figure(figsize=(10,8))
-		Afr_gs = gridspec.GridSpec(1,1) 
-		Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
-		Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$')
-		Afr_ax.set_xlabel('Number of particles')
-		Afr_ax.set_xscale('log')
-
-
-		# Npart_list = [50,100,400,700,1000,2000,5000,10000,50000,100000,500000,1000000]
-		phi_list = [0,45,90]
-		theta_list = [90,50,20]
-		Npart_list = [50,100,500,1000,5000,10000,50000,100000,500000,len(HI_masses)]
-		ls = ['-','--',':']
-		Afr_list = np.zeros([len(Npart_list),len(phi_list)*len(theta_list)])
-		for nn in range(len(Npart_list)):
-			Npart = Npart_list[nn]
-
-			particle_sample = nprand.choice(range(len(HI_masses)), Npart)
-
-			HI_masses_temp = HI_masses * len(HI_masses) / Npart
-			vel, spectrum = calc_spectrum(gas_coords_edgeon[particle_sample,:], 
-				gas_vel_edgeon[particle_sample], HI_masses_temp[particle_sample], beamsize=40)
-			
-			spec_ax.plot(vel, spectrum, label='Number of particles = {}'.format(Npart))
-
-
-			for pp in range(len(phi_list)):
-				for tt in range(len(theta_list)):
-					phi = phi_list[pp]
-					theta = theta_list[tt]
-
-					gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
-					gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
-
-					vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
-					gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize=40)
-
-					Peak = np.nanmax(spectrum)
-					# print(PeaklocL)
-					# PeaklocL, PeaklocR = locate_peaks(spectrum)
-					widths = locate_width(spectrum, [Peak,Peak], 0.2)
-					# print(widths)
-					Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-					Afr_list[nn,pp*len(phi_list)+tt] = Afr
-		
+		Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
+		Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
 		for pp in range(len(phi_list)):
 				for tt in range(len(theta_list)):
-					Afr_ax.plot(Npart_list, Afr_list[:,pp*len(phi_list)+tt], ls = ls[tt], color='C{}'.format(pp))
+					Afr_ax.errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
+						yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
 
-		leg = [Line2D([0],[0],ls='-',color='Black'),
-				Line2D([0],[0],ls='--',color='Black'),
-				Line2D([0],[0],ls=':',color='Black')]				
-		Afr_ax.legend(leg,labels=['i = 90', 'i = 50', 'i = 20'])
-		spec_ax.legend(fontsize=10)
-		plt.show()
-		spec_figname = '{dir}/figures/snaps{tt}_spec_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
-		Afr_figname = '{dir}/figures/snaps{tt}_Afr_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
+		# leg = [Line2D([0],[0],ls='-',color='Black'),
+		# 		Line2D([0],[0],ls='--',color='Black'),
+		# 		Line2D([0],[0],ls=':',color='Black')]				
+		# Afr_ax.legend(leg,labels=['i = 90', 'i = 50', 'i = 20'])
+		# spec_ax.legend(fontsize=10)
+		# plt.show()
+		# spec_figname = '{dir}/figures/snaps{tt}_spec_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
+		# Afr_figname = '{dir}/figures/snaps{tt}_Afr_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
 
-		specfig.savefig(spec_figname, dpi=200)
-		Afrfig.savefig(Afr_figname, dpi=200)
+		# specfig.savefig(spec_figname, dpi=200)
+		# Afrfig.savefig(Afr_figname, dpi=200)
+	else:
+
+		for ii in snaplist:#range(rank,len(snaplist),nproc):
+		
+			if rank == 0:
+				tt = snaplist[ii]
+
+				filename = '{dir}snaps/snapshotGD2_{tt}.hdf5'.format(dir=basedir, tt=str(tt).zfill(3))
+				file = h5py.File(filename,'r')
+				parttypes = list(file.keys())
+				head = file['Header']
+				DM = file['PartType1']
+				disk = file['PartType2']
+				gas = file['PartType0']
+
+				[DM_coordinates, DM_masses, DM_velocities] = \
+					particle_info(1,1,DM, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+				[gas_coordinates, gas_masses, gas_velocities, gas_densities, \
+					gas_internal_energy] = particle_info(1,1,gas, unitmass, ['Coordinates','Masses',\
+						'Velocities','Density','InternalEnergy'],comoving=False)
+				[disk_coordinates, disk_masses, disk_velocities] = \
+					particle_info(1,1,disk, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+				if 'PartType5' in parttypes:
+					newstars = file['PartType5']
+
+					[newstars_coordinates, newstars_masses, newstars_velocities] = \
+					particle_info(1,1,newstars, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+					stars_coordinates = np.append(stars_coordinates, newstars_coordinates, axis=0)
+					stars_masses = np.append(stars_masses, newstars_masses)
+					stars_velocities = np.append(stars_velocities, newstars_velocities)
+				else:
+					stars_coordinates = disk_coordinates
+					stars_masses = disk_masses
+					stars_velocities = disk_velocities
+
+				COM_DM = calc_COM(DM_coordinates,DM_masses,5.e3)
+
+				DM_coordinates -= COM_DM
+				stars_coordinates -= COM_DM
+				disk_coordinates -= COM_DM
+				gas_coordinates -= COM_DM
+
+				gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 90)
+				gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 90)
+
+
+				gas_masses_unit = gas_masses *unitmass
+				gas_SFR = np.zeros(len(gas_masses))
+				gas_Z = np.zeros(len(gas_masses))+0.001
+				gas_density_unit = gas_densities * (1.e3*1.e3*1.e3)/ unitmass
+				gas_internal_energy_unit = gas_internal_energy * 1.e5*1.e5
+
+
+				HI_masses, H2_masses, gas_neutral_masses = galcalc_ARHS.HI_H2_masses(
+					gas_masses_unit,gas_SFR,gas_Z,gas_density_unit,gas_internal_energy_unit,None,0, mode='u')
+			else:
+				HI_masses = None
+				gas_coordinates = None
+				gas_velocities = None
+
+
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000,10000, 50000, 100000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+
+			for nn in range(len(Npart_list)):
+				Npart = Npart_list[nn]
+				if rank == 0:
+					HI_masses_temp = HI_masses * len(HI_masses) / Npart
+				else:
+					HI_masses_temp = None
+				comm.Bcast(HI_masses_temp, root=0)
+
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						phi = phi_list[pp]
+						theta = theta_list[tt]
+						if rank == 0:
+							gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
+							gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
+						else:
+							gas_coords_temp = None
+							gas_vel_temp = None
+
+						comm.Bcast(gas_coords_temp, root=0)
+						comm.Bcast(gas_vel_temp, root=0)
+
+						for ss in range(rank,1000,nproc):
+							particle_sample = nprand.choice(range(len(HI_masses)), Npart)
+								
+							vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
+							gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
+
+							Peak = np.nanmax(spectrum)
+							widths = locate_width(spectrum, [Peak,Peak], 0.2)
+							Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+							Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
+				
+			np.savetxt('./data/Afr_list_snap{tt}_proc{rank}.dat'.format(tt = tt, rank=rank), Afr_list)
+
+			comm.barrier()
+			
 
 def plot_controlled_run():
 
