@@ -3,7 +3,7 @@ import pafit as pf
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from scipy.optimize import curve_fit
-from scipy.interpolate import interp2d
+from scipy.interpolate import interp2d, griddata
 from scipy import ndimage
 
 
@@ -16,7 +16,7 @@ from vorbin.voronoi_2d_binning import voronoi_2d_binning
 def main():
 
 	Imap, Vfield, R_opt = model_intensity_velocity_map(PA = [0,0])
-
+	print(R_opt)
 	xcoord = []
 	ycoord = []
 	Imap_signal = []
@@ -32,16 +32,17 @@ def main():
 
 	# binNum, xNode, yNode, xBar, yBar, sn, nPixels, scale = voronoi_2d_binning(
 	# 	np.array(xcoord), np.array(ycoord), np.array(Imap_signal), np.array(noise),  20., plot=0, quiet=0, pixelsize=1)
-	# plt.tight_layout()
-	# plt.show()
+	# # plt.tight_layout()
+	# # plt.show()
 
-	# np.savetxt('./data/voroni_bins_PA0.txt', np.column_stack([np.array(xcoord), np.array(ycoord), binNum]),
- #               fmt=b'%10.6f %10.6f %8i')
-	
-	data = np.loadtxt('./data/voroni_bins_PA0.txt')
+	# np.savetxt('./data/voroni_bins_PA90_2.txt', np.column_stack([np.array(xcoord), np.array(ycoord), binNum]),
+	# 			fmt=b'%10.6f %10.6f %8i')
+	# exit()
+	data = np.loadtxt('./data/voroni_bins_PA0_2.txt')
 	xcoord = data[:,0]
 	ycoord = data[:,1]
 	binNum = data[:,2].astype(int)
+
 
 
 	Imap_signal = np.array(Imap_signal)
@@ -60,6 +61,11 @@ def main():
 		Imap_pix_binvals[pixinbin] = np.mean(Imap_signal[pixinbin])
 		Vfield_pix_binvals[pixinbin] = np.mean(Vfield_signal[pixinbin])
 	
+	# plt.scatter(xcoord,ycoord,c=Vfield_pix_binvals)
+	# plt.show()
+	# exit()
+
+
 	dens2 = (Imap_signal/np.array(noise))**4
 	mass = ndimage.sum(dens2, labels=binNum, index=range(Nbins))
 	xNodes = ndimage.sum(xcoord*dens2, labels=binNum, index=range(Nbins))/mass
@@ -79,18 +85,19 @@ def main():
 		# plt.show()
 
 	maxrad = 2 * R_opt
-	pix_rad = np.arange(1,101) + 1.1**(np.arange(1,101))
+	pix_rad = np.arange(10, 201) + 1.1**(np.arange(10, 201))
 	sample_radii = pix_rad[pix_rad < maxrad]
 
 	PA_q_coeffs = np.zeros([len(sample_radii),13])
 	K_coeffs = np.zeros([len(sample_radii), 5])
+	sample_radii = [1.5*R_opt]
 
 	for rr in range(len(sample_radii)):
 		sample_rad = sample_radii[rr]
 		
 		ellipse_params =  calc_best_ellipse(data, sample_rad, 0.5* len(Imap), 0.5 * len(Imap), moment = 1)
-
-		samples = sample_ellipse_interpolator(data, ellipse_params, show=False)
+		print(ellipse_params)
+		samples = sample_ellipse_interpolator(data, ellipse_params, show = True)
 		fit_params = fit_harmonic_expansion(samples, order = 5)
 		
 		PA_q_coeffs[rr,0] = ellipse_params['PA'] * 180.e0 / np.pi
@@ -106,6 +113,7 @@ def main():
 		# plt.plot(np.arange(360),harmonic_expansion_O3(np.arange(360),PA_q_coeffs[rr,2],PA_q_coeffs[rr,3],PA_q_coeffs[rr,4],
 		# 	PA_q_coeffs[rr,5],PA_q_coeffs[rr,6],PA_q_coeffs[rr,7],PA_q_coeffs[rr,8]))
 		# plt.show()
+	print(PA_q_coeffs)
 
 	fig = plt.figure(figsize=(10,18))
 	gs = gridspec.GridSpec(4,1) 
@@ -114,17 +122,17 @@ def main():
 	K1_ax = fig.add_subplot(gs[2,0])
 	K5_ax = fig.add_subplot(gs[3,0])
 
-	PA_ax.plot(sample_radii,PA_q_coeffs[:,0])
-	incl_ax.plot(sample_radii,PA_q_coeffs[:,1])
-	K1_ax.plot(sample_radii,K1)
-	K5_ax.plot(sample_radii,K_coeffs[:,0]/K_coeffs[:,4])
+	PA_ax.plot(sample_radii[PA_q_coeffs[:,1] != 0]/R_opt,PA_q_coeffs[PA_q_coeffs[:,1] != 0,0])
+	incl_ax.plot(sample_radii[PA_q_coeffs[:,1] != 0]/R_opt,PA_q_coeffs[PA_q_coeffs[:,1] != 0,1])
+	K1_ax.plot(sample_radii[PA_q_coeffs[:,1] != 0]/R_opt,K_coeffs[PA_q_coeffs[:,1] != 0,0])
+	K5_ax.plot(sample_radii[PA_q_coeffs[:,1] != 0]/R_opt,K_coeffs[PA_q_coeffs[:,1] != 0,4]/K_coeffs[PA_q_coeffs[:,1] != 0,0])
 	plt.show()
 
 
 def calc_best_ellipse(data, radius, x0, y0, moment = 0):
 
-	PA_range = np.linspace(-89,89,25)
-	q_range = np.linspace(0.1,1,25)
+	PA_range = np.linspace(-90,90,25)
+	q_range = np.linspace(0.2,1,20)
 	chisq_grid = np.zeros([len(PA_range),len(q_range)])
 	ellipse_params = {'R':radius, 'PA':0, 'q':0,'x0':x0,'y0':y0,'moment':moment}
 
@@ -144,20 +152,24 @@ def calc_best_ellipse(data, radius, x0, y0, moment = 0):
 	PA_min = PA_range[minchisq[0]][0]
 	q_min = q_range[minchisq[1]][0]
 	
-	# print(radius, 'rough fit PA = ', PA_min, 'q = ', q_min, '(i = ',np.arccos(q_min)*180/np.pi,')')
+	print(radius, 'rough fit PA = ', PA_min, 'q = ', q_min, '(i = ',np.arccos(q_min)*180/np.pi,')')
+
 
 
 	ellipse_params = Parameters()
 	ellipse_params.add('R', value = radius, vary=False)
-	ellipse_params.add('PA', value = PA_min,min=-90,max=90)
-	ellipse_params.add('q', value = q_min,min=q_min*0.5,max=q_min*1.1)
-	ellipse_params.add('x0', value = 0.5*len(data), min = 0.5*len(data)*0.8, max = 0.5*len(data)*1.2)
-	ellipse_params.add('y0', value = 0.5*len(data), min = 0.5*len(data)*0.8, max = 0.5*len(data)*1.2)
+	ellipse_params.add('PA', value = PA_min, min = -90, max=90)
+	ellipse_params.add('q', value = q_min, min=0.2, max=1)
+	ellipse_params.add('x0', value = x0, min = 0.8*x0, max = 1.2*x0)
+	ellipse_params.add('y0', value = y0, min = 0.8*y0, max = 1.2*y0)
 	ellipse_params.add('moment', value = moment, vary = False)
-
+	
+	if moment == 1:
+		ellipse_params['x0'].set(vary=False)
+		ellipse_params['y0'].set(vary=False)
 
 	mini = Minimizer(ellipse_harmonic_expansion_interpolator, ellipse_params,fcn_args = (data,), fcn_kws = {'LM':True})
-	result = mini.minimize(method = 'nelder')
+	result = mini.minimize()#method = 'least_squares')#method = 'nelder')
 
 	return result.params.valuesdict()
 
@@ -183,9 +195,9 @@ def sample_ellipse_interpolator(data, params, show=False):
 
 		nodes_radii_argsort = nodes_radii.argsort()
 
-		xnodes_sample = xnodes[nodes_radii_argsort][0:5]
-		ynodes_sample = ynodes[nodes_radii_argsort][0:5]
-		sample_data = bin_values[nodes_radii_argsort][0:5]
+		xnodes_sample = xnodes[nodes_radii_argsort][0:4]
+		ynodes_sample = ynodes[nodes_radii_argsort][0:4]
+		sample_data = bin_values[nodes_radii_argsort][0:4]
 		sample.extend([bilinear_interp(x_sample,y_sample,xnodes_sample,ynodes_sample,sample_data)])
 	if show == True:
 		plt.scatter(range(360),sample)
@@ -193,14 +205,15 @@ def sample_ellipse_interpolator(data, params, show=False):
 	return sample
 
 def bilinear_interp(xcoord, ycoord, xnodes, ynodes, binvals):
-	interpfunc = interp2d(xnodes,ynodes,binvals)
-	value = interpfunc(xcoord,ycoord)[0]
+	# interpfunc = interp2d(xnodes,ynodes,binvals)
+	# value = interpfunc(xcoord,ycoord)[0]
+
 	return value
 
 def harmonic_expansion_O3(phi, A0, A1, B1, A2, B2, A3, B3):
 	H = A0 + A1 * np.sin(phi*np.pi/180.) + B1 * np.cos(phi*np.pi/180.) + \
-		A2 * np.sin(2.e0*phi*np.pi/180.) + B2 * np.cos(2.e0*phi*np.pi/180.) + \
-		A3 * np.sin(3.e0*phi*np.pi/180.) + B3 * np.cos(3.e0*phi*np.pi/180.)
+		A3 * np.sin(3.e0*phi*np.pi/180.) + B3 * np.cos(3.e0*phi*np.pi/180.) + \
+		A2 * np.sin(2.e0*phi*np.pi/180.) + B2 * np.cos(2.e0*phi*np.pi/180.) 
 	return H
 
 def harmonic_expansion_O5(phi, A0, A1, B1, A2, B2, A3, B3, A4, B4, A5, B5):
@@ -216,6 +229,8 @@ def fit_harmonic_expansion(samples, order = 3):
 		fit_params, fit_covar = curve_fit(harmonic_expansion_O3, np.arange(360), samples)
 		params = {'A0':fit_params[0],'A1':fit_params[1],'B1':fit_params[2],
 				'A2':fit_params[3],'B2':fit_params[4],'A3':fit_params[5],'B3':fit_params[6]}
+		# params = {'A0':fit_params[0],'A1':fit_params[1],'B1':fit_params[2],
+				# 'A3':fit_params[3],'B3':fit_params[4]}
 	if order == 5:
 		fit_params, fit_covar = curve_fit(harmonic_expansion_O5, np.arange(360), samples)
 		params = {'A0':fit_params[0],'A1':fit_params[1],'B1':fit_params[2],
@@ -522,8 +537,7 @@ def polyex_RC(radius, costheta, V0, scalePE, R_opt, aa, incl):
 		(1.e0 + aa * radius * R_PE)) * costheta * incl )
 	return mom1
 
-
-def model_intensity_velocity_map(dim = 500, GMfact = [800,1500], r0 = [0.16,1], re = [0.5,1], weights = [4,1], incl = [60,40], PA = [0,0]):
+def model_intensity_velocity_map(dim = 500, GMfact = [800,1500], r0 = [0.4,1.2], re = [0.56,1.2], weights = [4,1], incl = [60,40], PA = [0,0]):
 
 	radius, costheta_disk, Ropt = create_arrays(dim, incl[0],PA[0], limit=False)
 	radius, costheta_bulge, Ropt = create_arrays(dim, incl[1],PA[1], limit=False)
