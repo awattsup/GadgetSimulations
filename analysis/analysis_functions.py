@@ -1,10 +1,10 @@
 import numpy as np 
 from astropy.table import Table
-import matplotlib.pyplot as plt 
-import matplotlib.gridspec as gridspec
-from matplotlib.ticker import FormatStrFormatter
-from matplotlib.colorbar import Colorbar
-from matplotlib.lines import Line2D
+# import matplotlib.pyplot as plt 
+# import matplotlib.gridspec as gridspec
+# from matplotlib.ticker import FormatStrFormatter
+# from matplotlib.colorbar import Colorbar
+# from matplotlib.lines import Line2D
 import h5py
 import glob
 import numpy.random as nprand
@@ -13,7 +13,7 @@ from scipy.special import erf
 from scipy.optimize import curve_fit
 from mpi4py import MPI
 import sys
-import Find_H2_LGS
+# import Find_H2_LGS
 import galcalc_ARHS
 
 
@@ -443,15 +443,10 @@ def resolution_test():
 	nproc = comm.Get_size()
 
 	basedir = sys.argv[1]
-	theta = 90.				#inclination
-	phi = 0.				#position angle
-	view_theta = theta*np.pi/180.e0 
-	view_phi = phi*np.pi/180.e0  
 
 	unitmass = 1.e10
 	
-	snaplist = np.arange(0,101)
-	snaplist = [0,25,50,75]
+	snaplist = [25,50,75]
 	plot = False
 
 	if plot:
@@ -492,12 +487,12 @@ def resolution_test():
 		# Afrfig.savefig(Afr_figname, dpi=200)
 	else:
 
-		for ii in snaplist:#range(rank,len(snaplist),nproc):
+		for ii in range(len(snaplist)):#range(rank,len(snaplist),nproc):
 		
 			if rank == 0:
-				tt = snaplist[ii]
+				snap = snaplist[ii]
 
-				filename = '{dir}snaps/snapshotGD2_{tt}.hdf5'.format(dir=basedir, tt=str(tt).zfill(3))
+				filename = '{dir}snaps/snapshotGD2_{snap}.hdf5'.format(dir=basedir, snap=str(snap).zfill(3))
 				file = h5py.File(filename,'r')
 				parttypes = list(file.keys())
 				head = file['Header']
@@ -547,10 +542,17 @@ def resolution_test():
 
 				HI_masses, H2_masses, gas_neutral_masses = galcalc_ARHS.HI_H2_masses(
 					gas_masses_unit,gas_SFR,gas_Z,gas_density_unit,gas_internal_energy_unit,None,0, mode='u')
+				HI_masses = np.array(HI_masses)
 			else:
-				HI_masses = None
-				gas_coordinates = None
-				gas_velocities = None
+				HI_masses = np.array([])
+				gas_coordinates = np.array([])
+				gas_velocities = np.array([])
+				snap = None
+
+			HI_masses = comm.bcast(HI_masses, root=0)
+			gas_coordinates = comm.bcast(gas_coordinates, root=0)
+			gas_velocities = comm.bcast(gas_velocities, root=0)
+			snap = comm.bcast(snap,root = 0)
 
 
 			phi_list = [0,45,90]
@@ -565,7 +567,7 @@ def resolution_test():
 					HI_masses_temp = HI_masses * len(HI_masses) / Npart
 				else:
 					HI_masses_temp = None
-				comm.Bcast(HI_masses_temp, root=0)
+				HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
 
 				for pp in range(len(phi_list)):
 					for tt in range(len(theta_list)):
@@ -578,8 +580,8 @@ def resolution_test():
 							gas_coords_temp = None
 							gas_vel_temp = None
 
-						comm.Bcast(gas_coords_temp, root=0)
-						comm.Bcast(gas_vel_temp, root=0)
+						gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
+						gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
 
 						for ss in range(rank,1000,nproc):
 							particle_sample = nprand.choice(range(len(HI_masses)), Npart)
@@ -591,10 +593,11 @@ def resolution_test():
 							widths = locate_width(spectrum, [Peak,Peak], 0.2)
 							Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
 							Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
-				
-			np.savetxt('./data/Afr_list_snap{tt}_proc{rank}.dat'.format(tt = tt, rank=rank), Afr_list)
+			Afr_list.flatten()
+			np.savetxt('./data/Afr_list_snap{snap}_proc{rank}.dat'.format(snap = snap, rank=rank), 
+				Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
 
-			comm.barrier()
+			comm.Barrier()
 			
 
 def plot_controlled_run():
