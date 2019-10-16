@@ -25,15 +25,22 @@ def remeasure_Afr():
 		data['Afr'][ii] = Afr
 	data.write('/media/data/simulations/IllustrisTNG/TNG_galdata_measured_v2_new.ascii',format='ascii',overwrite=True)
 
-
 def fix_measurements():
-	data = Table.read('/media/data/simulations/IllustrisTNG/TNG_galdata_measured_v2_new.ascii',format='ascii')
-	spectra = np.loadtxt('/media/data/simulations/IllustrisTNG/TNG_spectra_true.dat')
+	base = '/media/data/simulations/IllustrisTNG/TNG100-2'
+
+	data = Table.read('{}_galdata_measured_v2.ascii'.format(base),format='ascii')
+	spectra = np.loadtxt('{}_spectra_true.dat'.format(base))
 	vel_bins = spectra[:,0]
 	spectra = spectra[:,1::]
 	Vres = np.abs(np.diff(vel_bins))[0]
 	good = np.where(data['fit_success'] == 0)[0]
-	bad = np.where(data['fit_success'] == -1)[0]
+	bad = np.where(data['fit_success'] != 0)[0]
+
+
+	print(len(good))
+	print(len(bad))
+	exit()
+
 
 	# widths = (data['w20R'] - data['w20L']) * Vres
 	# highW = np.where(widths>500)[0]
@@ -51,18 +58,23 @@ def fix_measurements():
 	# exit()
 
 
-	# original_check=False
-	# if original_check:
-	# 	peaks_diff = np.where(data['fit_success'] == 1)[0]
-	# 	peaks_bad = np.where(data['fit_success'] == 2)[0]
-	# 	width_bad = np.where(data['fit_success'] == 3)[0]
+	original_check=False
+	if original_check:
+		peaks_diff = np.where(data['fit_success'] == 1)[0]
+		peaks_bad = np.where(data['fit_success'] == 2)[0]
+		width_bad = np.where(data['fit_success'] == 3)[0]
 
-	# 	print('Number of good',len(good))
-	# 	print('Number of peaks disagree',len(peaks_diff))
-	# 	print('Number of peaks are bad',len(peaks_bad))
-	# 	print('Number of widths are bad',len(width_bad))
-	
-	IDs = [5704,8593,13180]
+		print('Number of good',len(good))
+		print('Number of peaks disagree',len(peaks_diff))
+		print('Number of peaks are bad',len(peaks_bad))
+		print('Number of widths are bad',len(width_bad))
+		exit()
+	# IDs = [5704,8593,13180]
+
+	# IDs = bad[bad<210] #210
+	# IDs = [1239,1295,1489,1511,2102,2206,2487,2654,2839,2973,3085,3679,3737,3738,3909,4207,4210,4943,5335,5669,5973,7013,7378,9636,10230,10767,10798,10830]
+	IDs = [91,242,288,674,987,1205,1453,1696,1802,2168,2213,4234,4420,4676,4941,5340,5534,5576,5638]
+	print(len(IDs))
 
 	for ii in IDs:
 		print(ii)
@@ -96,22 +108,43 @@ def fix_measurements():
 					data['PeaklocR'][ii] = peaks[1]
 			if answer == 'b':
 				data['fit_success'][ii] = -1
+			if answer == 'pp':
+				print('inputting to fit one peak')
+				level = 0.999
 			elif answer == 'p':
 				print('input fraction of peak to try')
 				level = float(input())
 			plt.close()
-		data.write('/media/data/simulations/IllustrisTNG/TNG_galdata_measured_v2_new.ascii',format='ascii',overwrite=True)
+		data.write('{}_galdata_measured_v2.ascii'.format(base),format='ascii',overwrite=True)
 
 def plot_Afr_env():
+
+	particle_mass = 2.e6
 
 	data = Table.read('/media/data/simulations/IllustrisTNG/TNG_galdata_measured_v2_new.ascii',format='ascii')
 	print(len(np.where(data['fit_success'] == 0)[0]))
 	good = np.where((data['Afr'] > 1) & (data['Afr'] < 3) & (data['fit_success'] == 0))[0]
 	data = data[good]
+
+	resolved = np.where((data['Sint']/particle_mass > 1.e3) & (data['mass_stars']/particle_mass > 1.e3))
+	resolved_data = data[resolved]
+
+	print(len(resolved_data))
 	print(len(data))
-	isocent = np.where(data['Type'] == -1)[0]
-	grpcent = np.where(data['Type'] == 0)[0]
-	sat = np.where(data['Type'] == 1)[0]
+
+	plt.hist(np.log10(data['mass_stars']),alpha=0.8)
+	plt.hist(np.log10(resolved_data['mass_stars']),alpha=0.5)
+	plt.show()
+	# exit()
+
+	print(len(data))
+	isocent = np.where(resolved_data['Type'] == -1)[0]
+	grpcent = np.where(resolved_data['Type'] == 0)[0]
+	sat = np.where(resolved_data['Type'] == 1)[0]
+
+	print(len(isocent))
+	print(len(grpcent))
+	print(len(sat))
 
 	halomass = data['mass_halo']
 	Afr = data['Afr']
@@ -133,13 +166,14 @@ def plot_Afr_env():
 	plt.show()
 	exit()
 
-
 def measure_TNG_spectra():
 	comm = MPI.COMM_WORLD
 	rank = comm.Get_rank()
 	nproc = comm.Get_size()
 
-	spectra = np.loadtxt('/media/data/simulations/IllustrisTNG/TNG_spectra_true.dat')
+	base = '/media/data/simulations/IllustrisTNG/TNG100-3'
+
+	spectra = np.loadtxt('{}_spectra_true.dat'.format(base))
 	vel_bins = spectra[:,0]
 	spectra = spectra[:,1::]
 	Vres = np.diff(vel_bins)[0]
@@ -163,7 +197,7 @@ def measure_TNG_spectra():
 		measurements_all = measurements_all[0:Nspectra,:]
 		sort = np.argsort(measurements_all[:,0])
 		measurements_all = measurements_all[sort]
-		data = Table.read('/media/data/simulations/IllustrisTNG/TNG_galdata.ascii',format='ascii')
+		data = Table.read('{}_galdata.ascii'.format(base),format='ascii')
 		data['fit_success'] = measurements_all[:,1]
 		data['PeaklocL'] = measurements_all[:,2]
 		data['PeaklocR'] = measurements_all[:,3]
@@ -172,7 +206,329 @@ def measure_TNG_spectra():
 		data['Sint'] = measurements[:,6]
 		data['Afr'] = measurements_all[:,7]
 
-		data.write('/media/data/simulations/IllustrisTNG/TNG_galdata_measured_v2.ascii',format='ascii')
+		data.write('{}_galdata_measured.ascii'.format(base),format='ascii')
+
+
+
+def resolution_completeness():
+
+	particle_mass = 1.4e6
+
+	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+
+	data['mass_stars'] = np.log10(data['mass_stars'])
+	data['SFR'] = np.log10(data['SFR']) - data['mass_stars']
+
+	plt.scatter(data['mass_stars'],data['SFR'],s=0.1)
+	plt.show()
+	# exit()
+
+
+	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
+	unresolved_asym = np.where((data['Sint']/particle_mass < 1.e3))[0]
+
+	print(len(resolved_asym))
+	print(len(unresolved_asym))
+
+	mstar_bins = np.arange(9,13,0.1)
+	SFR_bins = np.arange(-15,-8,0.1)
+	compl_grid = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
+	for mm in range(len(mstar_bins)-1):
+		mbin_low = mstar_bins[mm]
+		mbin_high = mstar_bins[mm + 1]
+		inbin_mm = np.where((data['mass_stars'] > mbin_low) & (data['mass_stars'] < mbin_high))[0]
+		inbin_mm_res = np.where((data['mass_stars'][resolved_asym] > mbin_low) & (data['mass_stars'][resolved_asym] < mbin_high))[0]
+		for ss in range(len(SFR_bins)-1):
+			sbin_low = SFR_bins[ss]
+			sbin_high = SFR_bins[ss + 1]
+			inbin_ss = np.where((data['SFR'] > sbin_low) & (data['SFR'] < sbin_high))[0]
+			inbin_ss_res = np.where((data['SFR'][resolved_asym] > sbin_low) & (data['SFR'][resolved_asym] < sbin_high))[0]
+
+			inbin = np.intersect1d(inbin_ss,inbin_mm)
+			inbin_res = np.intersect1d(inbin_ss_res,inbin_mm_res)
+			if len(inbin) == 0:
+				compl_grid[ss,mm] = np.nan
+
+			else:
+				compl_grid[ss,mm] = len(inbin_res) / len(inbin)
+
+
+
+
+	plt.pcolormesh(mstar_bins,SFR_bins,compl_grid)
+	plt.colorbar()
+
+	plt.contour(mstar_bins[0:-1],SFR_bins[0:-1],compl_grid,levels=[0.5],**{'linewidths':3,'colors':'Black'})
+
+	plt.plot([9,12.5],[-0.344*(9-9) - 9.822, -0.344*(12.5-9) - 9.822],ls = '--',color='Red',linewidth=2)
+	plt.plot([9,12.5],[-0.344*(9-9) - 9.822 - (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 - (0.088*(12.5-9) + 0.188)],ls = ':',color='Red',linewidth=2)
+	plt.plot([9,12.5],[-0.344*(9-9) - 9.822 + (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 + (0.088*(12-9) + 0.188)],ls = ':',color='Red',linewidth=2)
+
+	plt.xlabel('log10 Stellar mass')
+	plt.ylabel('log10 SFR')
+	plt.title('TNG100 fraction of HI asymmetry resolved galaxies (contour = 0.6)')
+	plt.show()
+
+	exit()
+
+
+
+
+
+
+	resolved = np.where((data['Sint']/particle_mass > 1.e3) & (data['mass_stars']/particle_mass > 1.e3))
+	resolved_data = data[resolved]
+
+	print(len(resolved_data))
+	print(len(data))
+
+	plt.hist(np.log10(data['mass_stars']),alpha=0.8)
+	plt.hist(np.log10(resolved_data['mass_stars']),alpha=0.5)
+
+def resolution_completeness_ratio():
+
+	particle_mass = 1.4e6
+
+	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100-3_galdata_measured_v2.ascii',format='ascii')
+	data['mass_stars'] = np.log10(data['mass_stars'])
+	data['SFR'] = np.log10(data['SFR']) - data['mass_stars']
+	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
+	mstar_bins = np.arange(9,13,0.1)
+	SFR_bins = np.arange(-15,-8,0.1)
+	compl_grid_1 = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
+	for mm in range(len(mstar_bins)-1):
+		mbin_low = mstar_bins[mm]
+		mbin_high = mstar_bins[mm + 1]
+		inbin_mm = np.where((data['mass_stars'] > mbin_low) & (data['mass_stars'] < mbin_high))[0]
+		inbin_mm_res = np.where((data['mass_stars'][resolved_asym] > mbin_low) & (data['mass_stars'][resolved_asym] < mbin_high))[0]
+		for ss in range(len(SFR_bins)-1):
+			sbin_low = SFR_bins[ss]
+			sbin_high = SFR_bins[ss + 1]
+			inbin_ss = np.where((data['SFR'] > sbin_low) & (data['SFR'] < sbin_high))[0]
+			inbin_ss_res = np.where((data['SFR'][resolved_asym] > sbin_low) & (data['SFR'][resolved_asym] < sbin_high))[0]
+
+			inbin = np.intersect1d(inbin_ss,inbin_mm)
+			inbin_res = np.intersect1d(inbin_ss_res,inbin_mm_res)
+			if len(inbin) == 0:
+				compl_grid_1[ss,mm] = np.nan
+
+			else:
+				compl_grid_1[ss,mm] = len(inbin_res) / len(inbin)
+
+
+	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100-2_galdata_measured_v2.ascii',format='ascii')
+	data['mass_stars'] = np.log10(data['mass_stars'])
+	data['SFR'] = np.log10(data['SFR']) - data['mass_stars']
+	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
+	mstar_bins = np.arange(9,13,0.1)
+	SFR_bins = np.arange(-15,-8,0.1)
+	compl_grid_2 = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
+	for mm in range(len(mstar_bins)-1):
+		mbin_low = mstar_bins[mm]
+		mbin_high = mstar_bins[mm + 1]
+		inbin_mm = np.where((data['mass_stars'] > mbin_low) & (data['mass_stars'] < mbin_high))[0]
+		inbin_mm_res = np.where((data['mass_stars'][resolved_asym] > mbin_low) & (data['mass_stars'][resolved_asym] < mbin_high))[0]
+		for ss in range(len(SFR_bins)-1):
+			sbin_low = SFR_bins[ss]
+			sbin_high = SFR_bins[ss + 1]
+			inbin_ss = np.where((data['SFR'] > sbin_low) & (data['SFR'] < sbin_high))[0]
+			inbin_ss_res = np.where((data['SFR'][resolved_asym] > sbin_low) & (data['SFR'][resolved_asym] < sbin_high))[0]
+
+			inbin = np.intersect1d(inbin_ss,inbin_mm)
+			inbin_res = np.intersect1d(inbin_ss_res,inbin_mm_res)
+			if len(inbin) == 0:
+				compl_grid_2[ss,mm] = np.nan
+
+			else:
+				compl_grid_2[ss,mm] = len(inbin_res) / len(inbin)
+
+
+	compl_ratio = compl_grid_1 / compl_grid_2
+	compl_ratio[compl_ratio > 1] = 1.e0/ compl_ratio[compl_ratio>1]
+
+
+	plt.pcolormesh(mstar_bins,SFR_bins,compl_ratio)
+	plt.colorbar()
+
+	plt.contour(mstar_bins[0:-1],SFR_bins[0:-1],compl_ratio,levels=[0.8],**{'linewidths':3,'colors':'Black'})
+	plt.xlabel('log10 Stellar mass')
+	plt.ylabel('log10 SFR')
+	plt.title('TNG100-3 / TNG100-2 completness ratio')
+	plt.show()
+
+	exit()
+
+
+
+
+
+
+	resolved = np.where((data['Sint']/particle_mass > 1.e3) & (data['mass_stars']/particle_mass > 1.e3))
+	resolved_data = data[resolved]
+
+	print(len(resolved_data))
+	print(len(data))
+
+	plt.hist(np.log10(data['mass_stars']),alpha=0.8)
+	plt.hist(np.log10(resolved_data['mass_stars']),alpha=0.5)	
+
+def compare_Afrhist_TNGboxes():
+
+	particle_mass = 1.4e6
+
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	TNG100_2 = Table.read('/media/data/simulations/IllustrisTNG/TNG100-2_galdata_measured_v2.ascii',format='ascii')
+	TNG100_3 = Table.read('/media/data/simulations/IllustrisTNG/TNG100-3_galdata_measured_v2.ascii',format='ascii')
+
+
+	TNG100 = TNG100[np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]]
+	TNG100_2 = TNG100_2[np.where((TNG100_2['Sint']/particle_mass >= 1.e3))[0]]
+	TNG100_3 = TNG100_3[np.where((TNG100_3['Sint']/particle_mass >= 1.e3))[0]]
+
+
+	# plt.hist(np.log10(TNG100['mass_stars']),bins=15,alpha=0.6,density=True)
+	# plt.hist(np.log10(TNG100_2['mass_stars']),bins=15,alpha=0.4,density=True)
+	# plt.xlabel('lgMstar')
+	# plt.ylabel('Histogram Density')
+	# plt.show()
+
+
+	TNG100TNG1002 = False
+	if TNG100TNG1002:
+		
+		plt.hist(np.log10(TNG100['mass_stars']),bins=15,alpha=0.6,density=True)
+		plt.hist(np.log10(TNG100_2['mass_stars']),bins=15,alpha=0.4,density=True)
+		plt.xlabel('lgMstar')
+		plt.ylabel('Histogram Density')
+		plt.show()
+
+		TNG100 = TNG100[np.where((np.log10(TNG100['mass_stars'])<9.8) & (np.log10(TNG100['mass_stars'])> 9.3) 
+					& (np.log10(TNG100['SFR'] / TNG100['mass_stars']) > -10.1 ) & (np.log10(TNG100['SFR'] / TNG100['mass_stars']) < -9.6 ))[0]]
+		TNG100_2 = TNG100_2[np.where((np.log10(TNG100_2['mass_stars'])<9.8) & (np.log10(TNG100_2['mass_stars'])> 9.3) 
+					& (np.log10(TNG100_2['SFR'] / TNG100_2['mass_stars']) > -10.1) & (np.log10(TNG100_2['SFR'] / TNG100_2['mass_stars']) < -9.6)) [0]]
+
+		TNG100_cent = np.where(TNG100['Type'] <= 0)[0]
+		TNG100_sat = np.where(TNG100['Type'] == 1)[0]
+
+		TNG100_2_cent = np.where(TNG100_2['Type'] <= 0)[0]
+		TNG100_2_sat = np.where(TNG100_2['Type'] == 1)[0]
+
+
+
+
+		fig = plt.figure(figsize = (10,8))
+		gs = gridspec.GridSpec(2, 1, top = 0.9, right = 0.98, bottom  = 0.08, left = 0.08)
+		axes_1 = fig.add_subplot(gs[0,0])
+		axes_1.hist(TNG100['Afr'][TNG100_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_cent)))
+		axes_1.hist(TNG100['Afr'][TNG100_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_sat)))
+		# axes_1.set_xlabel('Asymmetry measure A$_{fr}$')
+		axes_1.set_ylabel('Cumulative Histogram Density')
+		axes_1.legend()
+
+		axes_2 = fig.add_subplot(gs[1,0])
+		axes_2.hist(TNG100_2['Afr'][TNG100_2_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_2_cent)))
+		axes_2.hist(TNG100_2['Afr'][TNG100_2_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_2_sat)))
+		axes_2.set_xlabel('Asymmetry measure A$_{fr}$')
+		axes_2.set_ylabel('Cumulative Histogram Density')
+		axes_2.legend()
+
+		fig.suptitle('TNG100 & TNG100-2  lgMstar = [9.3,9.8] sSFR = [-10.1,-9.6]',fontsize = 15)
+
+
+		plt.show()
+		exit()
+
+
+	TNG1002TNG1003 = True
+	if TNG1002TNG1003:
+		
+
+		plt.hist(np.log10(TNG100_3['mass_stars']),bins=15,alpha=0.6,density=True)
+		plt.hist(np.log10(TNG100_2['mass_stars']),bins=15,alpha=0.4,density=True)
+		plt.xlabel('lgMstar')
+		plt.ylabel('Histogram Density')
+		plt.show()
+
+		TNG100_3 = TNG100_3[np.where((np.log10(TNG100_3['mass_stars'])<10.1) & (np.log10(TNG100_3['mass_stars'])> 9.3) 
+					& (np.log10(TNG100_3['SFR'] / TNG100_3['mass_stars']) > -10.7 ) & (np.log10(TNG100_3['SFR'] / TNG100_3['mass_stars']) < -9.7 ))[0]]
+		TNG100_2 = TNG100_2[np.where((np.log10(TNG100_2['mass_stars'])<10.1) & (np.log10(TNG100_2['mass_stars'])> 9.3) 
+					& (np.log10(TNG100_2['SFR'] / TNG100_2['mass_stars']) > -10.7) & (np.log10(TNG100_2['SFR'] / TNG100_2['mass_stars']) < -9.7)) [0]]
+
+		TNG100_3_cent = np.where(TNG100_3['Type'] <= 0)[0]
+		TNG100_3_sat = np.where(TNG100_3['Type'] == 1)[0]
+
+		TNG100_2_cent = np.where(TNG100_2['Type'] <= 0)[0]
+		TNG100_2_sat = np.where(TNG100_2['Type'] == 1)[0]
+
+
+		fig = plt.figure(figsize = (10,8))
+		gs = gridspec.GridSpec(2, 1, top = 0.9, right = 0.98, bottom  = 0.08, left = 0.08)
+		axes_1 = fig.add_subplot(gs[0,0])
+		axes_1.hist(TNG100_3['Afr'][TNG100_3_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_3_cent)))
+		axes_1.hist(TNG100_3['Afr'][TNG100_3_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_3_sat)))
+		# axes_1.set_xlabel('Asymmetry measure A$_{fr}$')
+		axes_1.set_ylabel('Cumulative Histogram Density')
+		axes_1.legend()
+
+		axes_2 = fig.add_subplot(gs[1,0])
+		axes_2.hist(TNG100_2['Afr'][TNG100_2_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_2_cent)))
+		axes_2.hist(TNG100_2['Afr'][TNG100_2_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_2_sat)))
+		axes_2.set_xlabel('Asymmetry measure A$_{fr}$')
+		axes_2.set_ylabel('Cumulative Histogram Density')
+		axes_2.legend()
+
+		fig.suptitle('TNG100-3 & TNG100-2  lgMstar = [9.3,10.1] sSFR = [-10.7,-9.7]',fontsize = 15)
+
+
+		plt.show()
+		exit()
+
+
+	TNG100TNG1003 = True
+	if TNG100TNG1003:
+		
+		plt.hist(np.log10(TNG100['mass_stars']),bins=15,alpha=0.6,density=True)
+		plt.hist(np.log10(TNG100_3['mass_stars']),bins=15,alpha=0.4,density=True)
+		plt.xlabel('lgMstar')
+		plt.ylabel('Histogram Density')
+		plt.show()
+
+		TNG100_3 = TNG100_3[np.where((np.log10(TNG100_3['mass_stars'])<9.6) & (np.log10(TNG100_3['mass_stars'])> 9.1) 
+					& (np.log10(TNG100_3['SFR'] / TNG100_3['mass_stars']) > -9.8 ) & (np.log10(TNG100_3['SFR'] / TNG100_3['mass_stars']) < -9.2 ))[0]]
+		TNG100 = TNG100[np.where((np.log10(TNG100['mass_stars'])<9.6) & (np.log10(TNG100['mass_stars'])> 9.1) 
+					& (np.log10(TNG100['SFR'] / TNG100['mass_stars']) > -9.8) & (np.log10(TNG100['SFR'] / TNG100['mass_stars']) < -9.2)) [0]]
+
+		TNG100_3_cent = np.where(TNG100_3['Type'] <= 0)[0]
+		TNG100_3_sat = np.where(TNG100_3['Type'] == 1)[0]
+
+		TNG100_cent = np.where(TNG100['Type'] <= 0)[0]
+		TNG100_sat = np.where(TNG100['Type'] == 1)[0]
+
+
+		fig = plt.figure(figsize = (10,8))
+		gs = gridspec.GridSpec(2, 1, top = 0.9, right = 0.98, bottom  = 0.08, left = 0.08)
+		axes_1 = fig.add_subplot(gs[0,0])
+		axes_1.hist(TNG100_3['Afr'][TNG100_3_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_3_cent)))
+		axes_1.hist(TNG100_3['Afr'][TNG100_3_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_3_sat)))
+		# axes_1.set_xlabel('Asymmetry measure A$_{fr}$')
+		axes_1.set_ylabel('Cumulative Histogram Density')
+		axes_1.legend()
+
+		axes_2 = fig.add_subplot(gs[1,0])
+		axes_2.hist(TNG100['Afr'][TNG100_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_cent)))
+		axes_2.hist(TNG100['Afr'][TNG100_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_sat)))
+		axes_2.set_xlabel('Asymmetry measure A$_{fr}$')
+		axes_2.set_ylabel('Cumulative Histogram Density')
+		axes_2.legend()
+
+		fig.suptitle('TNG100-3 & TNG100  lgMstar = [9.25,9.5] sSFR = [-10.5,-9.5]',fontsize = 15)
+
+
+		plt.show()
+		exit()
+
+
+
 
 	
 def measure_spectrum(spectrum, Vres):
@@ -211,7 +567,7 @@ def measure_spectrum_v2(spectrum, Vres):
 	else:
 		peaks = peaks50
 		widths = locate_width(spectrum, peaks, 0.2)
-		if all(w > 0 for w in widths):
+		if all(w > 0 for w in widths) and all(w< len(spectrum) for w in widths):
 			success = 0
 			Sint, Afr = areal_asymmetry(spectrum, widths, Vres)
 		else:
@@ -450,9 +806,11 @@ def areal_asymmetry(spectrum, limits, Vres):
 if __name__ == '__main__':
 	# measure_TNG_spectra()
 	# plot_Afr_env()
-	fix_measurements()
+	# fix_measurements()
 	# remeasure_Afr()
-
+	# resolution_completeness()
+	# resolution_completeness_ratio()
+	compare_Afrhist_TNGboxes()
 
 
 

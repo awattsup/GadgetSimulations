@@ -1,10 +1,10 @@
 import numpy as np 
 from astropy.table import Table
-# import matplotlib.pyplot as plt 
-# import matplotlib.gridspec as gridspec
-# from matplotlib.ticker import FormatStrFormatter
-# from matplotlib.colorbar import Colorbar
-# from matplotlib.lines import Line2D
+import matplotlib.pyplot as plt 
+import matplotlib.gridspec as gridspec
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib.colorbar import Colorbar
+from matplotlib.lines import Line2D
 import h5py
 import glob
 import numpy.random as nprand
@@ -442,49 +442,75 @@ def resolution_test():
 	rank = comm.Get_rank()
 	nproc = comm.Get_size()
 
-	basedir = sys.argv[1]
-
 	unitmass = 1.e10
+	basedir = sys.argv[1]
 	
-	snaplist = [25,50,75]
-	plot = False
+	snaplist = [0,25,50,75]
+	plot = True
 
 	if plot:
+		for tt in range(len(snaplist)):
+			snap = snaplist[tt]
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000,10000, 50000, 100000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+
+			Nproc = len(glob.glob('{dir}/data/Afr_list_snap0_proc*'.format(dir=basedir)))
+			for proc in range(Nproc):
+				file = '{dir}/data/Afr_list_snap{snap}_proc{proc}.dat'.format(dir = basedir,snap=snap,proc=proc)
+				data = np.loadtxt(file)
+				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
+				Afr_list += data
+
+			for nn in range(len(Npart_list)):
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
+						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
+
+			Afrfig = plt.figure(figsize=(10,8))
+			Afr_gs = gridspec.GridSpec(1,1) 
+			Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
+			Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax.set_xlabel('Number of particles',fontsize = 15)
+			Afr_ax.set_xscale('log')
+			Afr_ax.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+
+
+			ls = ['-','--',':']
+
+
+			for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						Afr_ax.errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
+							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
+
+
+			leg = [Line2D([0],[0],ls='-',color='Black'),
+					Line2D([0],[0],ls='--',color='Black'),
+					Line2D([0],[0],ls=':',color='Black'),
+					Line2D([0],[0],ls='-',color='C0'),
+					Line2D([0],[0],ls='-',color='C1'),
+					Line2D([0],[0],ls='-',color='C2')]				
+			Afr_ax.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
+			# plt.show()
+			Afr_figname = '{dir}/figures/snaps{snap}_Afr_Npart.png'.format(dir=basedir,snap = snap)
+			Afrfig.savefig(Afr_figname, dpi=200)
+
+
+
 		# specfig = plt.figure(figsize=(10,8))
 		# spec_gs = gridspec.GridSpec(1,1) 
 		# spec_ax = specfig.add_subplot(spec_gs[0,0])
 		# spec_ax.set_xlabel('Velocity')
 		# spec_ax.set_ylabel('Spectral flux')
 		# spec_ax.set_ylim([0,40])
-
-		# Afrfig = plt.figure(figsize=(10,8))
-		# Afr_gs = gridspec.GridSpec(1,1) 
-		# Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
-		# Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$')
-		# Afr_ax.set_xlabel('Number of particles')
-		# Afr_ax.set_xscale('log')
-
-		# ls = ['-','--',':']
-
-
-		Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
-		Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
-		for pp in range(len(phi_list)):
-				for tt in range(len(theta_list)):
-					Afr_ax.errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
-						yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
-
-		# leg = [Line2D([0],[0],ls='-',color='Black'),
-		# 		Line2D([0],[0],ls='--',color='Black'),
-		# 		Line2D([0],[0],ls=':',color='Black')]				
-		# Afr_ax.legend(leg,labels=['i = 90', 'i = 50', 'i = 20'])
 		# spec_ax.legend(fontsize=10)
-		# plt.show()
 		# spec_figname = '{dir}/figures/snaps{tt}_spec_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
-		# Afr_figname = '{dir}/figures/snaps{tt}_Afr_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
-
 		# specfig.savefig(spec_figname, dpi=200)
-		# Afrfig.savefig(Afr_figname, dpi=200)
+
 	else:
 
 		for ii in range(len(snaplist)):#range(rank,len(snaplist),nproc):
@@ -599,6 +625,143 @@ def resolution_test():
 
 			comm.Barrier()
 			
+def resolution_test_EAGLE():
+
+	comm = MPI.COMM_WORLD
+	rank = comm.Get_rank()
+	nproc = comm.Get_size()
+
+	unitmass = 1.e10
+	gals = [8339149]#,2958109]
+
+	snaplist = [0,25,50,75]
+	plot = True
+
+	basedir = '/media/data/simulations/EAGLE_galaxies/'
+
+	if plot:
+
+		for ID in gals:
+
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000, 10000, 20000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+			
+
+			filename = '{basedir}EAGLE_galaxyID{ID}.hdf5'.format(basedir = basedir,ID=ID)
+
+			Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
+			for proc in range(Nproc):
+				file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
+				data = np.loadtxt(file)
+				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
+				Afr_list += data
+
+			for nn in range(len(Npart_list)):
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
+						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
+
+			Afrfig = plt.figure(figsize=(10,8))
+			Afr_gs = gridspec.GridSpec(1,1) 
+			Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
+			Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax.set_xlabel('Number of particles',fontsize = 15)
+			Afr_ax.set_xscale('log')
+			Afr_ax.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+
+
+			ls = ['-','--',':']
+
+
+			for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						Afr_ax.errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
+							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
+
+
+			leg = [Line2D([0],[0],ls='-',color='Black'),
+					Line2D([0],[0],ls='--',color='Black'),
+					Line2D([0],[0],ls=':',color='Black'),
+					Line2D([0],[0],ls='-',color='C0'),
+					Line2D([0],[0],ls='-',color='C1'),
+					Line2D([0],[0],ls='-',color='C2')]				
+			Afr_ax.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
+			# plt.show()
+			Afr_figname = '{basedir}/figures/EAGLE{ID}_Afr_Npart.png'.format(basedir=basedir,ID=ID)
+			Afrfig.savefig(Afr_figname, dpi=200)
+
+	else:
+
+		for ii in range(len(gals)):#range(rank,len(snaplist),nproc):
+		
+			if rank == 0:
+				ID = gals[ii]
+				filename = '/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/EAGLE_galaxyID{ID}.hdf5'.format(ID=ID)
+				
+				gas_coordinates, gas_velocities, HI_masses = read_EAGLE(filename)
+			else:
+				HI_masses = np.array([])
+				gas_coordinates = np.array([])
+				gas_velocities = np.array([])
+				ID = None
+
+			HI_masses = comm.bcast(HI_masses, root=0)
+			gas_coordinates = comm.bcast(gas_coordinates, root=0)
+			gas_velocities = comm.bcast(gas_velocities, root=0)
+			ID = comm.bcast(ID, root = 0)
+
+			# print(ID)
+			# print(len(HI_masses))
+			comm.Barrier()
+			# exit()
+
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000, 10000, 20000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+
+			for nn in range(len(Npart_list)):
+				Npart = Npart_list[nn]
+				if rank == 0:
+					HI_masses_temp = HI_masses * len(HI_masses) / Npart
+				else:
+					HI_masses_temp = None
+				HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
+
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						phi = phi_list[pp]
+						theta = theta_list[tt]
+						if rank == 0:
+							gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
+							gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
+						else:
+							gas_coords_temp = None
+							gas_vel_temp = None
+
+						gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
+						gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
+
+						for ss in range(rank,1000,nproc):
+							particle_sample = nprand.choice(range(len(HI_masses)), Npart)
+								
+							vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
+							gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
+
+							Peak = np.nanmax(spectrum)
+							widths = locate_width(spectrum, [Peak,Peak], 0.2)
+							Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+							Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
+			Afr_list.flatten()
+			np.savetxt('/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/data/restest{ID}_proc{rank}.dat'.format(ID=ID, rank=rank), 
+				Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
+
+			comm.Barrier()
 
 def plot_controlled_run():
 
@@ -909,6 +1072,121 @@ def TNGsnap():
 
 
 	# plot_spatial_radial_spectrum(0, Rvir, gas_coordinates, gas_velocities, HI_masses, H2_masses)
+
+def read_EAGLE(filename):
+
+	unitmass = 1.e10
+	catalogue = Table.read('/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/EAGLE_cat.ascii', format='ascii')
+	ID = int(filename.split('ID')[-1].split('.')[0])
+	catref = np.where(np.array(catalogue['GalaxyID']) == ID)[0]
+
+
+	file = h5py.File(filename,'r')
+	if 'PartType0' in list(file.keys()):
+		head = file['Header']
+		DM = file['PartType1']
+		stars = file['PartType4']
+		gas = file['PartType0']
+
+		a = head.attrs['ExpansionFactor']
+		h = head.attrs['HubbleParam']
+
+		[DM_coordinates, DM_velocities] = particle_info(a, h, DM, unitmass, ['Coordinates','Velocity'])
+		DM_masses = np.ones(len(DM_coordinates))*head.attrs['MassTable'][1] * a**(0) * h**(-1)
+
+		[gas_coordinates, gas_masses, gas_velocities, gas_densities, gas_internal_energy, gas_temperature] = \
+				particle_info(a, h, gas, unitmass, ['Coordinates','Mass','Velocity','Density','InternalEnergy','Temperature'])
+
+		[stars_coordinates, stars_masses, stars_velocities] = \
+				particle_info(a, h, stars, unitmass, ['Coordinates','Mass','Velocity'])
+
+		COP = np.array(catalogue['CentreOfPotential_x','CentreOfPotential_y','CentreOfPotential_z'][catref])[0]
+		COM = np.array(catalogue['CentreOfMass_x','CentreOfMass_y','CentreOfMass_z'][catref])[0]
+		COV = np.array(catalogue['Velocity_x','Velocity_y','Velocity_z'][catref])[0]
+		COP_group = np.array(catalogue['GroupCentreOfPotential_x','GroupCentreOfPotential_y','GroupCentreOfPotential_z'][catref])[0]
+		
+		COP = np.array([i for i in COP])
+		COP_group = np.array([i for i in COP_group])
+		COM = np.array([i for i in COM])
+		COV = np.array([i for i in COV])
+
+		DM_coordinates -= COP
+		gas_coordinates -= COP
+		stars_coordinates -= COP
+
+		stars_radii = np.sqrt(np.nansum(stars_coordinates**2.e0, axis=1))
+		gas_radii = np.sqrt(np.nansum(gas_coordinates**2.e0, axis=1))
+		DM_radii = np.sqrt(np.nansum(DM_coordinates**2.e0, axis=1))
+
+		p_crit = 3 * (h*100)**2.e0 / (8 * np.pi * (4.3e-3 *1.e-6*1.e10 )  )		# in 1.e10Msun/Mpc^3
+		Rvir = 0.005
+		rho = 200 * p_crit
+		while(rho >= 200 * p_crit):
+			rho = np.nansum(DM_masses[DM_radii < Rvir]) / (4. * np.pi * Rvir*Rvir*Rvir / 3.)
+			Rvir += 0.01
+	
+		DM_coordinates = DM_coordinates[DM_radii<=Rvir]
+		DM_masses = DM_masses[DM_radii<=Rvir]*1.e10
+		DM_velocities = DM_velocities[DM_radii<=Rvir]
+
+		stars_coordinates = stars_coordinates[stars_radii<=Rvir]
+		stars_masses = stars_masses[stars_radii<=Rvir]
+		stars_velocities = stars_velocities[stars_radii<=Rvir]
+
+		gas_coordinates = gas_coordinates[gas_radii<=Rvir]
+		gas_masses = gas_masses[gas_radii<=Rvir]
+		gas_velocities = gas_velocities[gas_radii<=Rvir]
+		gas_densities = gas_densities[gas_radii<=Rvir]
+		gas_internal_energy = gas_internal_energy[gas_radii<=Rvir]
+		gas_temperature = gas_temperature[gas_radii<=Rvir]
+
+		print('DM mass[1.e12]',np.nansum(DM_masses) / 1.e12)
+		print('stellar mass [1.e10]',np.nansum(stars_masses) / 1.e10)
+		print('Total gas mass [1.e10]', np.nansum(gas_masses) / 1.e10)
+		print('Stellar fraction',np.nansum(stars_masses) / np.nansum(DM_masses))
+		print('Total Gas fraction',np.nansum(gas_masses) / np.nansum(stars_masses))
+		Rvir *= 1.e3
+		print('Virial radius',Rvir, ' kpc')
+		
+		DM_coordinates *= 1.e3
+		gas_coordinates *= 1.e3
+		stars_coordinates *= 1.e3
+
+		DM_velocities -= COV
+		gas_velocities -= COV
+		stars_velocities -= COV
+
+		COM_stars_tot = np.array([0.,0.,0.])
+		
+		COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.1*Rvir)
+		gas_coordinates -= COM_stars
+		stars_coordinates -= COM_stars
+
+		COM_stars_tot -= COM_stars
+
+		eigvec = orientation_matrix(stars_coordinates, stars_masses)
+		stars_coordinates = stars_coordinates @ eigvec
+		gas_coordinates = gas_coordinates @ eigvec
+		DM_coordinates = DM_coordinates @ eigvec
+
+		COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.2*Rvir, Zmax=0.1*Rvir)
+		gas_coordinates -= COM_stars
+		stars_coordinates -= COM_stars
+		COM_stars_tot -= COM_stars
+
+		HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
+		HI_masses = HI_masses[gas_radii <= Rvir/1.e3]
+		H2_masses = H2_masses[gas_radii <=Rvir/1.e3]
+
+		gas_velocities = gas_velocities @ eigvec
+		DM_velocities = DM_velocities @ eigvec
+		stars_velocities = stars_velocities @ eigvec
+
+	return gas_coordinates, gas_velocities, HI_masses
+		
+
+
+	
 
 def EAGLEsnap():
 	
@@ -1317,7 +1595,7 @@ def diagonalise_inertia(coordinates, masses, rad):
 
 	return eigvec	
 
-def orientation_matrix(coordinates, masses):
+def orientation_matrix(coordinates, masses, show = False):
 
 	Iprev = [[1,0,0],[0,1,0],[0,0,1]]
 	eigvec_list = []
@@ -1330,11 +1608,12 @@ def orientation_matrix(coordinates, masses):
 		# eigvec = diagonalise_inertia(coordinates, masses, rad[rr])
 		eigvec = diagonalise_inertia(coordinates, masses, 5)				#not sure why 5kpc works, but most galaxies converge to x-y orientation
 		coordinates = coordinates @ eigvec 
-		plt.scatter(coordinates[:,0],coordinates[:,2],s=0.05)
-		plt.xlim([-40,40])
-		plt.ylim([-40,40])
-		plt.show()
-		plt.close()
+		if show == True:
+			plt.scatter(coordinates[:,0],coordinates[:,2],s=0.05)
+			plt.xlim([-40,40])
+			plt.ylim([-40,40])
+			plt.show()
+			plt.close()
 		eigvec_list.append(eigvec)
 
 		I = np.zeros([3,3])
@@ -1347,14 +1626,15 @@ def orientation_matrix(coordinates, masses):
 					I[ii,jj] = -1.e0*np.nansum(coordinates[:,ii]*coordinates[:,jj]*masses)
 
 		Idiff = np.abs((I[2][2] - Iprev[2][2]) / Iprev[2][2])
-		print(Idiff)
+		# print(Idiff)
 		Iprev = I
 		# rr+=1
-		plt.scatter(coordinates[:,0],coordinates[:,2],s=0.1)
-		plt.xlim([-40,40])
-		plt.ylim([-40,40])
-		plt.show()
-		plt.close()
+		if show == True:
+			plt.scatter(coordinates[:,0],coordinates[:,2],s=0.1)
+			plt.xlim([-40,40])
+			plt.ylim([-40,40])
+			plt.show()
+			plt.close()
 
 
 	eigvec = eigvec_list[0]
@@ -2029,8 +2309,8 @@ def calc_fH2_LGS(gas, unitmass, a, h):
 
 def calc_HI_H2_ARHS(gas, unitmass, a, h):
 
-	Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
-	Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
+	# Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
+	# Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
 
 
 	[masses, densities, Z, Habundance, temperature, U, SFR] = \
@@ -2408,4 +2688,6 @@ if __name__ == '__main__':
 
 	# EAGLEsnap()
 
-	resolution_test()
+	# resolution_test()
+
+	resolution_test_EAGLE()
