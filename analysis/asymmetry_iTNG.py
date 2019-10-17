@@ -208,9 +208,7 @@ def measure_TNG_spectra():
 
 		data.write('{}_galdata_measured.ascii'.format(base),format='ascii')
 
-
-
-def resolution_completeness():
+def resolution_completeness_sSFR():
 
 	particle_mass = 1.4e6
 
@@ -269,21 +267,131 @@ def resolution_completeness():
 	plt.title('TNG100 fraction of HI asymmetry resolved galaxies (contour = 0.6)')
 	plt.show()
 
-	exit()
+	# exit()
+
+	all_grid = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
+	for mm in range(len(mstar_bins)-1):
+		mbin_low = mstar_bins[mm]
+		mbin_high = mstar_bins[mm + 1]
+		inbin_mm = np.where((data['mass_stars'] > mbin_low) & (data['mass_stars'] < mbin_high))[0]
+		for ss in range(len(SFR_bins)-1):
+			sbin_low = SFR_bins[ss]
+			sbin_high = SFR_bins[ss + 1]
+			inbin_ss = np.where((data['SFR'] > sbin_low) & (data['SFR'] < sbin_high))[0]
+
+			inbin = np.intersect1d(inbin_ss,inbin_mm)
+			if len(inbin) == 0:
+				all_grid[ss,mm] = np.nan
+
+			else:
+				all_grid[ss,mm] = len(inbin)
+
+	# print(np.nansum(all_grid))
+
+
+	plt.pcolormesh(mstar_bins,SFR_bins,all_grid)
+	plt.colorbar()
+
+
+	plt.plot([9,12.5],[-0.344*(9-9) - 9.822, -0.344*(12.5-9) - 9.822],ls = '--',color='Red',linewidth=2)
+	plt.plot([9,12.5],[-0.344*(9-9) - 9.822 - (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 - (0.088*(12.5-9) + 0.188)],ls = ':',color='Red',linewidth=2)
+	plt.plot([9,12.5],[-0.344*(9-9) - 9.822 + (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 + (0.088*(12-9) + 0.188)],ls = ':',color='Red',linewidth=2)
+
+	plt.xlabel('log10 Stellar mass')
+	plt.ylabel('log10 SFR')
+	plt.title('TNG100 sSFR - lgMstar')
+	plt.show()
+
+def resolution_completeness_MHI():
+
+	particle_mass = 1.4e6
+
+	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+
+	data['mass_stars'] = np.log10(data['mass_stars'])
+
+	plt.scatter(data['mass_stars'],np.log10(data['Sint']) - data['mass_stars'],s=0.1)
+	plt.show()
+	# exit()
+
+
+	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
+	unresolved_asym = np.where((data['Sint']/particle_mass < 1.e3))[0]
+
+
+	data['Sint'] = np.log10(data['Sint']) - data['mass_stars']
+
+	print(len(resolved_asym))
+	print(len(unresolved_asym))
+
+
+	mstar_bins = np.arange(9,13,0.1)
+	resolved_frac = np.zeros(len(mstar_bins) - 1)
+	for ii in range(len(mstar_bins)-1):
+		mbin_low = mstar_bins[ii]
+		mbin_high = mstar_bins[ii + 1]
+		inbin = np.where((data['mass_stars'] > mbin_low) & (data['mass_stars'] < mbin_high))[0]
+		inbin_res = np.where((data['mass_stars'][resolved_asym] > mbin_low) & (data['mass_stars'][resolved_asym] < mbin_high))[0]
+		if len(inbin) != 0:
+			resolved_frac[ii] = len(inbin_res) / len(inbin)
+		else:
+			resolved_frac[ii] = np.nan
+
+	mstar_bins = np.arange(9,13,0.1)
+	mHI_bins = np.arange(-6,1,0.1)
+
+	all_grid = np.zeros([len(mHI_bins)-1,len(mstar_bins)-1])
+	for mm in range(len(mstar_bins)-1):
+		mbin_low = mstar_bins[mm]
+		mbin_high = mstar_bins[mm + 1]
+		inbin_mm = np.where((data['mass_stars'] > mbin_low) & (data['mass_stars'] < mbin_high))[0]
+		for ss in range(len(mHI_bins)-1):
+			sbin_low = mHI_bins[ss]
+			sbin_high = mHI_bins[ss + 1]
+			inbin_ss = np.where((data['Sint'] > sbin_low) & (data['Sint'] < sbin_high))[0]
+
+			inbin = np.intersect1d(inbin_ss,inbin_mm)
+			if len(inbin) == 0:
+				all_grid[ss,mm] = np.nan
+
+			else:
+				all_grid[ss,mm] = len(inbin)
+
+	# print(np.nansum(all_grid))
+
+
+	fig = plt.figure(figsize = (8,12))
+	gs = gridspec.GridSpec(4, 1, top = 0.95, right = 0.98, bottom  = 0.12, left = 0.08)
+
+	ax1 = fig.add_subplot(gs[0:3,0])
+	ax2 = fig.add_subplot(gs[3,0],sharex = ax1)
+
+	ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+
+	ax1.pcolormesh(mstar_bins,mHI_bins,all_grid)
+	ax1.plot([9,12],[np.log10(1.e3*1.4e6 / 1.e9)/9 , np.log10(1.e3*1.4e6 / 1.e12)],color='Black',ls='--',label='1000 partcles')
+
+	xGmed_lgMstar = [9.14,9.44,9.74,10.07,10.34,10.65,10.95,11.20]
+	xGmed_MHI = [-0.092,-0.320,-0.656,-0.854,-1.278,-1.223,-1.707,-1.785]
+
+	ax1.scatter(xGmed_lgMstar,xGmed_MHI, color='Red',s=20,label='xGASS weighted medians')
+	ax1.legend()
+
+	ax2.plot(mstar_bins[0:-1],resolved_frac, color='Black')
+	ax2.plot([9,12],[0.5,0.5],color='Blue',ls = '--')
+
+	ax2.set_xlabel('log10 Stellar mass')
+	ax1.set_ylabel('log10 MHI/Mstar')
+	ax2.set_ylabel('Resolved fraction')
+	ax1.set_title('TNG100 MHI- lgMstar')
+
+	ax2.set_ylim([0,1])
+	plt.show()
 
 
 
 
-
-
-	resolved = np.where((data['Sint']/particle_mass > 1.e3) & (data['mass_stars']/particle_mass > 1.e3))
-	resolved_data = data[resolved]
-
-	print(len(resolved_data))
-	print(len(data))
-
-	plt.hist(np.log10(data['mass_stars']),alpha=0.8)
-	plt.hist(np.log10(resolved_data['mass_stars']),alpha=0.5)
 
 def resolution_completeness_ratio():
 
@@ -527,7 +635,85 @@ def compare_Afrhist_TNGboxes():
 		plt.show()
 		exit()
 
+def compare_asymmetry_halomass():
 
+
+	particle_mass = 1.4e6
+
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+
+	TNG100 = TNG100[np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]]
+
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
+	TNG100['SFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+
+	plt.hist(TNG100['mass_halo'][(TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars']< 11.5)],bins=20)
+	plt.xlabel('log10 Halo mass')
+	plt.ylabel('Histogram Count')
+	plt.show()
+	# exit()
+
+	massrange_1 = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11))[0]
+	massrange_2 = np.where((TNG100['mass_stars'] > 11) & (TNG100['mass_stars'] <= 11.5))[0]
+
+	print('number of galaxies',len(massrange_2) + len(massrange_1))
+	# exit()
+
+
+	fig = plt.figure(figsize = (10,8))
+	gs = gridspec.GridSpec(2, 1, top = 0.95, right = 0.98, bottom  = 0.12, left = 0.08)
+
+	ax1 = fig.add_subplot(gs[0,0])
+	ax2 = fig.add_subplot(gs[1,0])
+
+	ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+
+	massranges = [massrange_1,massrange_2]
+	axes = [ax1,ax2]
+
+	ax1.set_title('lgMstar = (10.5,11]',fontsize=10)
+	ax2.set_title('lgMstar = (11,11.5]',fontsize=10)
+	ax2.set_xlabel('Asymmetry measure A$_{fr}$')
+
+	for ii in range(len(massranges)):
+
+		TNG_samp = TNG100[massranges[ii]]
+
+		lowmass = np.where((TNG_samp['mass_halo'] > 11) & (TNG_samp['mass_halo'] <= 12))[0]
+		medmass = np.where((TNG_samp['mass_halo'] > 12) & (TNG_samp['mass_halo'] <= 12.5))[0]
+		highmass = np.where((TNG_samp['mass_halo'] > 12.5) & (TNG_samp['mass_halo'] <= 13.5))[0]
+		bigmass = np.where((TNG_samp['mass_halo'] > 13.5))
+
+		axes[ii].set_ylabel('Histogram Density')
+
+		axes[ii].hist(TNG_samp['Afr'][lowmass],bins=np.arange(1,2.5,0.01),density=True,
+			cumulative=True,color='Purple',histtype='step',label = 'M_$h$ = (11,12] ({})'.format(len(TNG_samp['Afr'][lowmass])))
+		
+
+		axes[ii].hist(TNG_samp['Afr'][medmass],bins=np.arange(1,2.5,0.01),density=True,
+			cumulative=True,color='Orange',histtype='step',label = 'M_$h$ = (12,12.5] ({})'.format(len(TNG_samp['Afr'][medmass])))
+		
+		axes[ii].hist(TNG_samp['Afr'][highmass],bins=np.arange(1,2.5,0.01),density=True,
+			cumulative=True,color='Green',histtype='step',label = 'M_$h$ = (12.5,13.5] ({})'.format(len(TNG_samp['Afr'][highmass])))
+		
+		# axes[ii].hist(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']<1],bins=np.arange(1,2.5,0.01),density=True,
+			# cumulative=True,color='Green',histtype='step',label = 'M_$h$ = (12,13] ({})'.format(len(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']<1])))
+		# axes[ii].hist(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']==1],bins=np.arange(1,2.5,0.01),ls = '--',density=True,
+		# 	cumulative=True,color='Green',histtype='step',label = 'M_$h$ = (12,13] ({})'.format(len(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']==1])))
+		
+
+		axes[ii].hist(TNG_samp['Afr'][bigmass],bins=np.arange(1,2.5,0.01),density=True,
+			cumulative=True,color='Red',histtype='step',label = 'M_$h$ > 13.5 ({})'.format(len(TNG_samp['Afr'][bigmass])))
+		axes[ii].legend()
+	plt.show()
+	exit()
+
+
+
+	
 
 
 	
@@ -808,9 +994,11 @@ if __name__ == '__main__':
 	# plot_Afr_env()
 	# fix_measurements()
 	# remeasure_Afr()
-	# resolution_completeness()
+	# resolution_completeness_sSFR()
+	# resolution_completeness_MHI()
 	# resolution_completeness_ratio()
-	compare_Afrhist_TNGboxes()
+	# compare_Afrhist_TNGboxes()
+	compare_asymmetry_halomass()
 
 
 
