@@ -16,7 +16,881 @@ import sys
 # import Find_H2_LGS
 import galcalc_ARHS
 
+## fourier decomposition of datacube data
 
+def fourier_decomp_datacube():
+	sys.path.append('../../fourier-decomposition')
+	import fourier_decomposition as fd
+
+	spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/data/datacube_test.dat')
+	
+	# velfield = np.nanmean(datacube,axis = 2)
+	# plt.imshow(velfield)
+	# plt.show()
+
+	# plt.imshow(np.log10(np.nansum(datacube,axis=2)/mjy_conversion(params['dist'],params['Vres']) / (np.abs(np.diff(spacebins)[0]) * 1.e3) **2.e0) )
+	# plt.show()
+
+
+### datacube and spectra creation /saving
+
+
+def HI_datacube_simulation():
+
+
+	filename = '/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/snaps/snapshot_000.hdf5'
+
+	gas_coordinates, gas_velocities, HI_masses = read_controlled_run(filename)
+
+	gas_coordinates_faceon = calc_coords_obs(gas_coordinates, 0, 0)
+	gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 90)
+
+	outname = '/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/data/datacube_test.dat'
+
+	create_HI_datacube(gas_coordinates_faceon,gas_vel_edgeon,HI_masses, filename=outname)
+
+
+
+#### simulation reading###
+
+def read_TNGsnap(base):
+
+	f = open(base + '_stars.txt')
+	names = f.readline().split(', ')
+	f.close()
+	names[0] = names[0].split('# ')[-1]
+	names[-1] = names[-1].split('\n')[0]
+
+	stars = np.loadtxt('{}_stars.txt'.format(base),skiprows=2)
+	stars_coordinates = stars[:,1:4]
+	stars_velocities = stars[:,4:7]
+	stars_masses = stars[:,7] #* unitmass
+
+	gas = np.loadtxt('{}_gas.txt'.format(base),skiprows=2)
+	gas_coordinates = gas[:,1:4]
+	gas_velocities = gas[:,4:7]
+	gas_masses = gas[:,7] #* unitmass
+	gas_neutral_masses = gas[:,8] * gas_masses
+	HImass_GK11 = gas[:,9]
+	HImass_GD14 = gas[:,10]
+	HImass_K13 = gas[:,11]
+	H2mass_GK11 = gas[:,12]
+	H2mass_GD14 = gas[:,13]
+	H2mass_K13 = gas[:,14]
+
+
+	COM_gas = calc_COM(gas_coordinates, gas_masses)
+	COM_stars = calc_COM(stars_coordinates, stars_masses)
+	gas_coordinates -= COM_gas
+	stars_coordinates -= COM_stars
+
+	gas_eigvec = orientation_matrix(gas_coordinates, gas_masses)
+	gas_coordinates = gas_coordinates @ gas_eigvec
+	stars_coordinates = stars_coordinates @ gas_eigvec
+
+	gas_velocities = gas_velocities @ gas_eigvec
+
+
+	return gas_coordinates, gas_velocities, HImass_K13
+
+	# plt.scatter(gas_coordinates[:,0],gas_coordinates[:,1],s=0.05)
+	# plt.show()
+
+
+	# gas_radii =  np.sqrt(np.nansum(gas_coordinates**2.e0, axis=1))
+
+	# gas_coords_faceon = calc_coords_obs(gas_coordinates, 180, 0)
+	# gas_coords_edgeon = calc_coords_obs(gas_coordinates, 180, 90)
+	# gas_vel_edgeon = calc_vel_obs(gas_velocities, 180 , 90)
+
+	# spectrum_spatial_contribution(gas_coordinates, gas_velocities, HImass_K13)
+
+
+	# # gas_Pextk = calc_Pextk_midpressure(stars_coordinates, stars_masses, gas_coordinates, gas_neutral_masses)
+	# # Rmol = calc_Rmol(gas_Pextk)
+	# # HI_masses = gas_neutral_masses / (1.e0 + Rmol)
+	# # H2_masses = gas_neutral_masses - HI_masses
+
+	# # HImass_list = [HI_masses, HImass_GK11, HImass_K13, HImass_GD14]
+
+	# # compare_radialSigma(gas_coordinates, HImass_list,['BR06','GK11','K13','GD14'],40)
+
+	# # compare_spectra(gas_coords_edgeon, gas_vel_edgeon, HImass_list, ['BR06','GK11','K13','GD14'])
+
+	# # map_asymmetry_viewangle(gas_coordinates,gas_velocities,HI_masses)
+
+	# print(np.nanmax(HI_masses),np.nanmin(HI_masses))
+	# print('total HI mass',np.nansum(HI_masses),'fraction=',np.nansum(HI_masses)/np.nansum(stars_masses))
+	# print('total H2 mass',np.nansum(H2_masses),'fraction=',np.nansum(H2_masses)/np.nansum(stars_masses))
+
+	# gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 17)
+	# gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 17)
+
+	# vel, spectrum = calc_spectrum(gas_coords_edgeon, gas_vel_edgeon, HI_masses)
+	# PeaklocL, PeaklocR = locate_peaks(spectrum)
+	# widths = locate_width(spectrum, [spectrum[PeaklocL],spectrum[PeaklocR]], 0.2)
+	# Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+
+	# plt.plot(vel, spectrum)
+	# plt.plot([vel[PeaklocL],vel[PeaklocL]],[0,20])
+	# plt.plot([vel[PeaklocR],vel[PeaklocR]],[0,20])
+	# plt.show()
+	# print(PeaklocL, PeaklocR)
+	# print(widths)
+	# print(Afr)
+
+
+	# plot_spatial_radial_spectrum(0, Rvir, gas_coordinates, gas_velocities, HI_masses, H2_masses)
+
+def read_EAGLE(filename):
+
+	unitmass = 1.e10
+	catalogue = Table.read('/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/EAGLE_cat.ascii', format='ascii')
+	ID = int(filename.split('ID')[-1].split('.')[0])
+	catref = np.where(np.array(catalogue['GalaxyID']) == ID)[0]
+
+
+	file = h5py.File(filename,'r')
+	if 'PartType0' in list(file.keys()):
+		head = file['Header']
+		DM = file['PartType1']
+		stars = file['PartType4']
+		gas = file['PartType0']
+
+		a = head.attrs['ExpansionFactor']
+		h = head.attrs['HubbleParam']
+
+		[DM_coordinates, DM_velocities] = particle_info(a, h, DM, unitmass, ['Coordinates','Velocity'])
+		DM_masses = np.ones(len(DM_coordinates))*head.attrs['MassTable'][1] * a**(0) * h**(-1)
+
+		[gas_coordinates, gas_masses, gas_velocities, gas_densities, gas_internal_energy, gas_temperature] = \
+				particle_info(a, h, gas, unitmass, ['Coordinates','Mass','Velocity','Density','InternalEnergy','Temperature'])
+
+		[stars_coordinates, stars_masses, stars_velocities] = \
+				particle_info(a, h, stars, unitmass, ['Coordinates','Mass','Velocity'])
+
+		COP = np.array(catalogue['CentreOfPotential_x','CentreOfPotential_y','CentreOfPotential_z'][catref])[0]
+		COM = np.array(catalogue['CentreOfMass_x','CentreOfMass_y','CentreOfMass_z'][catref])[0]
+		COV = np.array(catalogue['Velocity_x','Velocity_y','Velocity_z'][catref])[0]
+		COP_group = np.array(catalogue['GroupCentreOfPotential_x','GroupCentreOfPotential_y','GroupCentreOfPotential_z'][catref])[0]
+		
+		COP = np.array([i for i in COP])
+		COP_group = np.array([i for i in COP_group])
+		COM = np.array([i for i in COM])
+		COV = np.array([i for i in COV])
+
+		DM_coordinates -= COP
+		gas_coordinates -= COP
+		stars_coordinates -= COP
+
+		stars_radii = np.sqrt(np.nansum(stars_coordinates**2.e0, axis=1))
+		gas_radii = np.sqrt(np.nansum(gas_coordinates**2.e0, axis=1))
+		DM_radii = np.sqrt(np.nansum(DM_coordinates**2.e0, axis=1))
+
+		p_crit = 3 * (h*100)**2.e0 / (8 * np.pi * (4.3e-3 *1.e-6*1.e10 )  )		# in 1.e10Msun/Mpc^3
+		Rvir = 0.005
+		rho = 200 * p_crit
+		while(rho >= 200 * p_crit):
+			rho = np.nansum(DM_masses[DM_radii < Rvir]) / (4. * np.pi * Rvir*Rvir*Rvir / 3.)
+			Rvir += 0.01
+	
+		DM_coordinates = DM_coordinates[DM_radii<=Rvir]
+		DM_masses = DM_masses[DM_radii<=Rvir]*1.e10
+		DM_velocities = DM_velocities[DM_radii<=Rvir]
+
+		stars_coordinates = stars_coordinates[stars_radii<=Rvir]
+		stars_masses = stars_masses[stars_radii<=Rvir]
+		stars_velocities = stars_velocities[stars_radii<=Rvir]
+
+		gas_coordinates = gas_coordinates[gas_radii<=Rvir]
+		gas_masses = gas_masses[gas_radii<=Rvir]
+		gas_velocities = gas_velocities[gas_radii<=Rvir]
+		gas_densities = gas_densities[gas_radii<=Rvir]
+		gas_internal_energy = gas_internal_energy[gas_radii<=Rvir]
+		gas_temperature = gas_temperature[gas_radii<=Rvir]
+
+		print('DM mass[1.e12]',np.nansum(DM_masses) / 1.e12)
+		print('stellar mass [1.e10]',np.nansum(stars_masses) / 1.e10)
+		print('Total gas mass [1.e10]', np.nansum(gas_masses) / 1.e10)
+		print('Stellar fraction',np.nansum(stars_masses) / np.nansum(DM_masses))
+		print('Total Gas fraction',np.nansum(gas_masses) / np.nansum(stars_masses))
+		Rvir *= 1.e3
+		print('Virial radius',Rvir, ' kpc')
+		
+		DM_coordinates *= 1.e3
+		gas_coordinates *= 1.e3
+		stars_coordinates *= 1.e3
+
+		DM_velocities -= COV
+		gas_velocities -= COV
+		stars_velocities -= COV
+
+		COM_stars_tot = np.array([0.,0.,0.])
+		
+		COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.1*Rvir)
+		gas_coordinates -= COM_stars
+		stars_coordinates -= COM_stars
+
+		COM_stars_tot -= COM_stars
+
+		eigvec = orientation_matrix(stars_coordinates, stars_masses)
+		stars_coordinates = stars_coordinates @ eigvec
+		gas_coordinates = gas_coordinates @ eigvec
+		DM_coordinates = DM_coordinates @ eigvec
+
+		COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.2*Rvir, Zmax=0.1*Rvir)
+		gas_coordinates -= COM_stars
+		stars_coordinates -= COM_stars
+		COM_stars_tot -= COM_stars
+
+		HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
+		HI_masses = HI_masses[gas_radii <= Rvir/1.e3]
+		H2_masses = H2_masses[gas_radii <=Rvir/1.e3]
+
+		gas_velocities = gas_velocities @ eigvec
+		DM_velocities = DM_velocities @ eigvec
+		stars_velocities = stars_velocities @ eigvec
+
+	return gas_coordinates, gas_velocities, HI_masses
+
+def read_Genesis():
+	unitmass = 1.e10
+	Rvir = 0.2697
+
+	COD = np.array([13.3031, 34.7678, 40.9624])
+	COM = np.array([13.2992, 34.7688, 40.9632])
+	COV = np.array([-33.0769, -5.8676, -98.8213])
+	COM_offset = np.array([13.3016, 34.7614, 40.9740])
+	COV_offset = np.array([-34.6948,  6.1456, -95.8170])
+
+	filename = '/media/data/simulations/Genesis/snapshot_199.hdf5'
+	file = h5py.File(filename, 'r')
+
+	parttypes = list(file.keys())
+	head = file['Header']
+	DM = file['PartType1']
+	stars = file['PartType5']
+	gas = file['PartType0']
+
+	a = head.attrs['Redshift']
+	a = 1.e0 / (1.e0 + a)
+	h = head.attrs['HubbleParam']
+
+	[DM_coordinates, DM_masses, DM_velocities] = \
+		particle_info(a, h ,DM, unitmass, ['Coordinates','Masses','Velocities'],comoving = False)
+	[gas_coordinates, gas_masses, gas_velocities] =\
+	 particle_info(a, h ,gas, unitmass, ['Coordinates','Masses','Velocities'],comoving = False)
+
+	[stars_coordinates, stars_masses, stars_velocities] = \
+		particle_info(a, h ,stars, unitmass, ['Coordinates','Masses','Velocities'],comoving = False)
+
+	DM_radii = np.sqrt(np.nansum((DM_coordinates - COM)**2.e0, axis=1))
+	stars_radii = np.sqrt(np.nansum((stars_coordinates - COM)**2.e0, axis=1))
+	gas_radii = np.sqrt(np.nansum((gas_coordinates - COM)**2.e0, axis=1))
+
+	DM_virial = np.where(DM_radii <= Rvir)[0]
+	stars_virial = np.where(stars_radii <= Rvir)[0]
+	gas_virial = np.where(gas_radii <= Rvir)[0]
+
+
+	[DM_coordinates, DM_masses, DM_velocities] = \
+		particle_info(a, h, DM, unitmass, ['Coordinates','Masses','Velocities'], 
+		subset = DM_virial, comoving = False)
+	
+	[gas_coordinates, gas_masses, gas_velocities, gas_densities, gas_neutral_fraction, \
+				gas_internal_energy, gas_Z] = particle_info(a, h, gas, unitmass, ['Coordinates','Masses',\
+				'Velocities','Density','NeutralHydrogenAbundance','InternalEnergy','Metallicity'],
+				subset = gas_virial, comoving = False)
+	gas_neutral_masses = gas_masses * gas_neutral_fraction
+
+	[stars_coordinates, stars_masses, stars_velocities] = \
+		particle_info(a, h, stars, unitmass, ['Coordinates','Masses','Velocities'], 
+		subset = stars_virial, comoving = False)
+
+	DM_coordinates = (DM_coordinates - COM) * 1.e3
+	stars_coordinates = (stars_coordinates - COM) * 1.e3
+	gas_coordinates = (gas_coordinates - COM) * 1.e3
+
+	COM_gas = calc_COM(gas_coordinates, gas_masses)
+	COM_stars = calc_COM(stars_coordinates, stars_masses)
+	gas_coordinates -= COM_gas
+	stars_coordinates -= COM_stars
+
+	gas_eigvec = orientation_matrix(gas_coordinates, gas_masses)
+	gas_coordinates = gas_coordinates @ gas_eigvec
+	stars_coordinates = stars_coordinates @ gas_eigvec
+
+	gas_velocities = gas_velocities @ gas_eigvec
+
+
+	gas_SFR = np.zeros(len(gas_masses))
+	gas_density_unit = gas_densities * unitmass * 1.e-18
+
+	gas_internal_energy_unit = gas_internal_energy * 1.e3 * 1.e3
+
+	HI_masses, H2_masses = galcalc_ARHS.HI_H2_masses(
+					gas_masses, gas_SFR, gas_Z, gas_density_unit, 
+					gas_internal_energy_unit, gas_neutral_fraction, 0, mode='u')
+
+		
+	rad,sig = calc_sigma(gas_coordinates,HI_masses,Rmax = 50)
+	plt.plot(rad,sig)
+	plt.show()
+	exit()
+
+	return gas_coordinates, gas_velocities, HI_masses
+
+def read_controlled_run(filename):
+	# filename = '/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/snaps/snapshot_030.hdf5'
+	# filename = '/media/data/simulations/disktest/iso_fstar0.01_BT0_fB10_GF10/snaps/snapshotGD2_011.hdf5'
+
+	unitmass = 1.e10 									#1.e10 Msun
+
+	file = h5py.File(filename,'r')
+	parttypes = list(file.keys())
+	head = file['Header']
+	DM = file['PartType1']
+	disk = file['PartType2']
+	gas = file['PartType0']
+
+	[DM_coordinates, DM_masses, DM_velocities] = \
+		particle_info(1,1,DM, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+	[gas_coordinates, gas_masses, gas_velocities, gas_density, \
+		gas_internal_energy] = particle_info(1,1,gas, unitmass, ['Coordinates','Masses',\
+			'Velocities','Density','InternalEnergy'],comoving=False)
+	[disk_coordinates, disk_masses, disk_velocities] = \
+		particle_info(1,1,disk, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+	if 'PartType5' in parttypes:
+		newstars = file['PartType5']
+
+		[newstars_coordinates, newstars_masses, newstars_velocities] = \
+		particle_info(1,1,newstars, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+		stars_coordinates = np.append(stars_coordinates, newstars_coordinates, axis=0)
+		stars_masses = np.append(stars_masses, newstars_masses)
+		stars_velocities = np.append(stars_velocities, newstars_velocities)
+	else:
+		stars_coordinates = disk_coordinates
+		stars_masses = disk_masses
+		stars_velocities = disk_velocities
+
+	COM_DM = calc_COM(DM_coordinates,DM_masses,5.e3)
+
+	DM_coordinates -= COM_DM
+	stars_coordinates -= COM_DM
+	disk_coordinates -= COM_DM
+	gas_coordinates -= COM_DM
+
+	gas_SFR = np.zeros(len(gas_masses))
+	gas_Z = np.zeros(len(gas_masses)) + 0.001
+	gas_density *= unitmass * 1.e-9 							#1.e10 Msun/kpc^3 -> Msun/pc^3
+	gas_internal_energy *= 1.e3 * 1.e3 							#(km/s)^2 -> (m/s)^2
+
+	if 'GD2' in filename:
+		HI_masses, H2_masses, gas_neutral_fraction = galcalc_ARHS.HI_H2_masses(
+					gas_masses, gas_SFR, gas_Z, gas_density, 
+					gas_internal_energy, None, 0, mode='u')
+	else:
+		[gas_neutral_fraction] = particle_info(1,1,gas,unitmass,['NeutralHydrogenAbundance'],comoving=False)
+		HI_masses, H2_masses = galcalc_ARHS.HI_H2_masses(
+					gas_masses, gas_SFR, gas_Z, gas_density, 
+					gas_internal_energy, gas_neutral_fraction, 0, mode='u')
+
+	return gas_coordinates, gas_velocities, HI_masses
+		
+
+## resolution tests
+
+def resolution_test():
+
+	comm = MPI.COMM_WORLD
+	rank = comm.Get_rank()
+	nproc = comm.Get_size()
+
+	unitmass = 1.e10
+	basedir = sys.argv[1]
+	
+	snaplist = [0,25,50,75]
+	plot = True
+
+	if plot:
+		for tt in range(len(snaplist)):
+			snap = snaplist[tt]
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000,10000, 50000, 100000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+
+			Nproc = len(glob.glob('{dir}/data/Afr_list_snap0_proc*'.format(dir=basedir)))
+			for proc in range(Nproc):
+				file = '{dir}/data/Afr_list_snap{snap}_proc{proc}.dat'.format(dir = basedir,snap=snap,proc=proc)
+				data = np.loadtxt(file)
+				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
+				Afr_list += data
+
+			for nn in range(len(Npart_list)):
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
+						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
+
+			Afrfig = plt.figure(figsize=(16,8))
+			Afr_gs = gridspec.GridSpec(3,1) 
+			Afr_ax1 = Afrfig.add_subplot(Afr_gs[0,0])
+			Afr_ax2 = Afrfig.add_subplot(Afr_gs[1,0], sharex = Afr_ax1)
+			Afr_ax3 = Afrfig.add_subplot(Afr_gs[2,0], sharex = Afr_ax1)
+			Afr_ax1.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax2.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_xlabel('Number of particles',fontsize = 15)
+			Afr_ax1.set_xscale('log')
+			Afr_ax2.set_xscale('log')
+			Afr_ax3.set_xscale('log')
+			Afr_ax3.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+			axes = [Afr_ax1, Afr_ax2, Afr_ax3]
+
+			ls = ['-','--',':']
+
+
+			for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						axes[tt].errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
+							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
+
+			leg = [Line2D([0],[0],ls='-',color='Black'),
+					Line2D([0],[0],ls='--',color='Black'),
+					Line2D([0],[0],ls=':',color='Black'),
+					Line2D([0],[0],ls='-',color='C0'),
+					Line2D([0],[0],ls='-',color='C1'),
+					Line2D([0],[0],ls='-',color='C2')]				
+			Afr_ax1.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
+			# plt.show()
+			Afr_figname = '{dir}/figures/snaps{snap}_Afr_Npart.png'.format(dir=basedir,snap = snap)
+			Afrfig.savefig(Afr_figname, dpi=200)
+
+
+
+		# specfig = plt.figure(figsize=(10,8))
+		# spec_gs = gridspec.GridSpec(1,1) 
+		# spec_ax = specfig.add_subplot(spec_gs[0,0])
+		# spec_ax.set_xlabel('Velocity')
+		# spec_ax.set_ylabel('Spectral flux')
+		# spec_ax.set_ylim([0,40])
+		# spec_ax.legend(fontsize=10)
+		# spec_figname = '{dir}/figures/snaps{tt}_spec_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
+		# specfig.savefig(spec_figname, dpi=200)
+
+	else:
+
+		for ii in range(len(snaplist)):#range(rank,len(snaplist),nproc):
+		
+			if rank == 0:
+				snap = snaplist[ii]
+
+				filename = '{dir}snaps/snapshotGD2_{snap}.hdf5'.format(dir=basedir, snap=str(snap).zfill(3))
+				file = h5py.File(filename,'r')
+				parttypes = list(file.keys())
+				head = file['Header']
+				DM = file['PartType1']
+				disk = file['PartType2']
+				gas = file['PartType0']
+
+				[DM_coordinates, DM_masses, DM_velocities] = \
+					particle_info(1,1,DM, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+				[gas_coordinates, gas_masses, gas_velocities, gas_densities, \
+					gas_internal_energy] = particle_info(1,1,gas, unitmass, ['Coordinates','Masses',\
+						'Velocities','Density','InternalEnergy'],comoving=False)
+				[disk_coordinates, disk_masses, disk_velocities] = \
+					particle_info(1,1,disk, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+				if 'PartType5' in parttypes:
+					newstars = file['PartType5']
+
+					[newstars_coordinates, newstars_masses, newstars_velocities] = \
+					particle_info(1,1,newstars, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
+
+					stars_coordinates = np.append(stars_coordinates, newstars_coordinates, axis=0)
+					stars_masses = np.append(stars_masses, newstars_masses)
+					stars_velocities = np.append(stars_velocities, newstars_velocities)
+				else:
+					stars_coordinates = disk_coordinates
+					stars_masses = disk_masses
+					stars_velocities = disk_velocities
+
+				COM_DM = calc_COM(DM_coordinates,DM_masses,5.e3)
+
+				DM_coordinates -= COM_DM
+				stars_coordinates -= COM_DM
+				disk_coordinates -= COM_DM
+				gas_coordinates -= COM_DM
+
+				gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 90)
+				gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 90)
+
+
+				gas_masses_unit = gas_masses *unitmass
+				gas_SFR = np.zeros(len(gas_masses))
+				gas_Z = np.zeros(len(gas_masses)) + 0.001
+				gas_density_unit = gas_densities * unitmass * 1.e-9
+				gas_internal_energy_unit = gas_internal_energy * 1.e3*1.e3
+
+
+				HI_masses, H2_masses, gas_neutral_masses = galcalc_ARHS.HI_H2_masses(
+					gas_masses_unit,gas_SFR,gas_Z,gas_density_unit,gas_internal_energy_unit,None,0, mode='u')
+				HI_masses = np.array(HI_masses)
+			else:
+				HI_masses = np.array([])
+				gas_coordinates = np.array([])
+				gas_velocities = np.array([])
+				snap = None
+
+			HI_masses = comm.bcast(HI_masses, root=0)
+			gas_coordinates = comm.bcast(gas_coordinates, root=0)
+			gas_velocities = comm.bcast(gas_velocities, root=0)
+			snap = comm.bcast(snap,root = 0)
+
+
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000,10000, 50000, 100000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+
+			for nn in range(len(Npart_list)):
+				Npart = Npart_list[nn]
+				if rank == 0:
+					HI_masses_temp = HI_masses * len(HI_masses) / Npart
+				else:
+					HI_masses_temp = None
+				HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
+
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						phi = phi_list[pp]
+						theta = theta_list[tt]
+						if rank == 0:
+							gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
+							gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
+						else:
+							gas_coords_temp = None
+							gas_vel_temp = None
+
+						gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
+						gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
+
+						for ss in range(rank,1000,nproc):
+							particle_sample = nprand.choice(range(len(HI_masses)), Npart)
+								
+							vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
+							gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
+
+							Peak = np.nanmax(spectrum)
+							widths = locate_width(spectrum, [Peak,Peak], 0.2)
+							Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+							Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
+			Afr_list.flatten()
+			np.savetxt('./data/Afr_list_snap{snap}_proc{rank}.dat'.format(snap = snap, rank=rank), 
+				Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
+
+			comm.Barrier()
+			
+def resolution_test_EAGLE():
+
+	comm = MPI.COMM_WORLD
+	rank = comm.Get_rank()
+	nproc = comm.Get_size()
+
+	unitmass = 1.e10
+	gals = [8339149]#,2958109]
+
+	snaplist = [0,25,50,75]
+	plot = True
+
+	basedir = '/media/data/simulations/EAGLE_galaxies/'
+
+	if plot:
+
+		for ID in gals:
+
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000, 10000, 20000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+			
+
+			filename = '{basedir}EAGLE_galaxyID{ID}.hdf5'.format(basedir = basedir,ID=ID)
+
+			Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
+			for proc in range(Nproc):
+				file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
+				data = np.loadtxt(file)
+				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
+				Afr_list += data
+
+			for nn in range(len(Npart_list)):
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
+						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
+
+			Afrfig = plt.figure(figsize=(16,8))
+			Afr_gs = gridspec.GridSpec(3,1) 
+			Afr_ax1 = Afrfig.add_subplot(Afr_gs[0,0])
+			Afr_ax2 = Afrfig.add_subplot(Afr_gs[1,0], sharex = Afr_ax1)
+			Afr_ax3 = Afrfig.add_subplot(Afr_gs[2,0], sharex = Afr_ax1)
+			Afr_ax1.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax2.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_xlabel('Number of particles',fontsize = 15)
+			Afr_ax1.set_xscale('log')
+			Afr_ax2.set_xscale('log')
+			Afr_ax3.set_xscale('log')
+			Afr_ax3.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+			axes = [Afr_ax1, Afr_ax2, Afr_ax3]
+
+			ls = ['-','--',':']
+
+
+			for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						axes[tt].errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
+							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
+
+
+			leg = [Line2D([0],[0],ls='-',color='Black'),
+					Line2D([0],[0],ls='--',color='Black'),
+					Line2D([0],[0],ls=':',color='Black'),
+					Line2D([0],[0],ls='-',color='C0'),
+					Line2D([0],[0],ls='-',color='C1'),
+					Line2D([0],[0],ls='-',color='C2')]				
+			Afr_ax1.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
+			# plt.show()
+			Afr_figname = '{basedir}/figures/EAGLE{ID}_Afr_Npart.png'.format(basedir=basedir,ID=ID)
+			Afrfig.savefig(Afr_figname, dpi=200)
+
+	else:
+
+		for ii in range(len(gals)):#range(rank,len(snaplist),nproc):
+		
+			if rank == 0:
+				ID = gals[ii]
+				filename = '/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/EAGLE_galaxyID{ID}.hdf5'.format(ID=ID)
+				
+				gas_coordinates, gas_velocities, HI_masses = read_EAGLE(filename)
+			else:
+				HI_masses = np.array([])
+				gas_coordinates = np.array([])
+				gas_velocities = np.array([])
+				ID = None
+
+			HI_masses = comm.bcast(HI_masses, root=0)
+			gas_coordinates = comm.bcast(gas_coordinates, root=0)
+			gas_velocities = comm.bcast(gas_velocities, root=0)
+			ID = comm.bcast(ID, root = 0)
+
+			# print(ID)
+			# print(len(HI_masses))
+			comm.Barrier()
+			# exit()
+
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 100, 500, 1000, 5000, 10000, 20000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+
+			for nn in range(len(Npart_list)):
+				Npart = Npart_list[nn]
+				if rank == 0:
+					HI_masses_temp = HI_masses * len(HI_masses) / Npart
+				else:
+					HI_masses_temp = None
+				HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
+
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						phi = phi_list[pp]
+						theta = theta_list[tt]
+						if rank == 0:
+							gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
+							gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
+						else:
+							gas_coords_temp = None
+							gas_vel_temp = None
+
+						gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
+						gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
+
+						for ss in range(rank,1000,nproc):
+							particle_sample = nprand.choice(range(len(HI_masses)), Npart)
+								
+							vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
+							gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
+
+							Peak = np.nanmax(spectrum)
+							widths = locate_width(spectrum, [Peak,Peak], 0.2)
+							Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+							Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
+			Afr_list.flatten()
+			np.savetxt('/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/data/restest{ID}_proc{rank}.dat'.format(ID=ID, rank=rank), 
+				Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
+
+			comm.Barrier()
+
+def resolution_test_TNG():
+
+	comm = MPI.COMM_WORLD
+	rank = comm.Get_rank()
+	nproc = comm.Get_size()
+
+	unitmass = 1.e10
+	ID = 556247
+
+	# snaplist = [0, 25, 50, 75]
+	plot = False
+
+	# basedir = '/media/data/simulations/IllustrisTNG/'
+	basedir = '/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/IllustrisTNG/'
+
+
+	if plot:
+
+		for ID in gals:
+
+			phi_list = [0,45,90]
+			theta_list = [90,50,20]
+			Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+			
+
+			Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
+			for proc in range(Nproc):
+				file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
+				data = np.loadtxt(file)
+				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
+				Afr_list += data
+
+			for nn in range(len(Npart_list)):
+				for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
+						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
+
+			Afrfig = plt.figure(figsize=(16,8))
+			Afr_gs = gridspec.GridSpec(3,1) 
+			Afr_ax1 = Afrfig.add_subplot(Afr_gs[0,0])
+			Afr_ax2 = Afrfig.add_subplot(Afr_gs[1,0], sharex = Afr_ax1)
+			Afr_ax3 = Afrfig.add_subplot(Afr_gs[2,0], sharex = Afr_ax1)
+			Afr_ax1.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax2.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_xlabel('Number of particles',fontsize = 15)
+			Afr_ax1.set_xscale('log')
+			Afr_ax2.set_xscale('log')
+			Afr_ax3.set_xscale('log')
+			Afr_ax3.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+			axes = [Afr_ax1, Afr_ax2, Afr_ax3]
+
+			ls = ['-','--',':']
+
+
+			for pp in range(len(phi_list)):
+					for tt in range(len(theta_list)):
+						axes[tt].errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
+							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
+
+
+			leg = [Line2D([0],[0],ls='-',color='Black'),
+					Line2D([0],[0],ls='--',color='Black'),
+					Line2D([0],[0],ls=':',color='Black'),
+					Line2D([0],[0],ls='-',color='C0'),
+					Line2D([0],[0],ls='-',color='C1'),
+					Line2D([0],[0],ls='-',color='C2')]				
+			Afr_ax1.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
+			# plt.show()
+			Afr_figname = '{basedir}/figures/TNG_{ID}_Afr_Npart.png'.format(basedir=basedir,ID=ID)
+			Afrfig.savefig(Afr_figname, dpi=200)
+
+	else:
+	
+		if rank == 0:
+			filename = '{dir}TNG_{ID}'.format(dir = basedir, ID=ID)
+			gas_coordinates, gas_velocities, HI_masses = read_TNGsnap(filename)
+		else:
+			HI_masses = np.array([])
+			gas_coordinates = np.array([])
+			gas_velocities = np.array([])
+
+		HI_masses = comm.bcast(HI_masses, root=0)
+		gas_coordinates = comm.bcast(gas_coordinates, root=0)
+		gas_velocities = comm.bcast(gas_velocities, root=0)
+
+		# print(ID)
+		# print(len(HI_masses))
+		comm.Barrier()
+		# exit()
+
+		phi_list = [0,45,90]
+		theta_list = [90,50,20]
+		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+		Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+
+		for nn in range(len(Npart_list)):
+			Npart = Npart_list[nn]
+			if rank == 0:
+				HI_masses_temp = HI_masses * len(HI_masses) / Npart
+			else:
+				HI_masses_temp = None
+			HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
+
+			for pp in range(len(phi_list)):
+				for tt in range(len(theta_list)):
+					phi = phi_list[pp]
+					theta = theta_list[tt]
+					print(phi,theta)
+					if rank == 0:
+						gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
+						gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
+					else:
+						gas_coords_temp = None
+						gas_vel_temp = None
+
+					gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
+					gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
+
+					for ss in range(rank,1000,nproc):
+						particle_sample = nprand.choice(range(len(HI_masses)), Npart)
+							
+						vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
+						gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
+
+						Peak = np.nanmax(spectrum)
+						widths = locate_width(spectrum, [Peak,Peak], 0.2)
+						Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+						Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
+		Afr_list.flatten()
+		np.savetxt('{dir}/data/restest{ID}_proc{rank}.dat'.format(dir=basedir,ID=ID, rank=rank), 
+			Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
+
+		comm.Barrier()			
+
+
+
+# HI prescription comparisons
 def compare_pressures_spatial():
 	basedir = sys.argv[1]
 	theta = 90.				#inclination
@@ -176,6 +1050,9 @@ def compare_scaleheights():
 	plt.show()
 	exit()
 
+
+
+### kinda random intial codes
 def analyse_datacube():
 
 	comm = MPI.COMM_WORLD
@@ -436,333 +1313,6 @@ def measure_controlled_run():
 		# HIfaceon_mom0 = np.loadtxt('{dir}/data/snap{tt}_HIfaceon_mom0.txt'.format(dir=basedir,tt=str(tt).zfill(3)))
 		# HIedgeon_mom0 = np.loadtxt('{dir}/data/snap{tt}_HIedgeon_mom0.txt'.format(dir=basedir,tt=str(tt).zfill(3)))
 
-def resolution_test():
-
-	comm = MPI.COMM_WORLD
-	rank = comm.Get_rank()
-	nproc = comm.Get_size()
-
-	unitmass = 1.e10
-	basedir = sys.argv[1]
-	
-	snaplist = [0,25,50,75]
-	plot = True
-
-	if plot:
-		for tt in range(len(snaplist)):
-			snap = snaplist[tt]
-			phi_list = [0,45,90]
-			theta_list = [90,50,20]
-			Npart_list = [50, 100, 500, 1000, 5000,10000, 50000, 100000]
-			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
-			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
-
-			Nproc = len(glob.glob('{dir}/data/Afr_list_snap0_proc*'.format(dir=basedir)))
-			for proc in range(Nproc):
-				file = '{dir}/data/Afr_list_snap{snap}_proc{proc}.dat'.format(dir = basedir,snap=snap,proc=proc)
-				data = np.loadtxt(file)
-				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
-				Afr_list += data
-
-			for nn in range(len(Npart_list)):
-				for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
-						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
-
-			Afrfig = plt.figure(figsize=(10,8))
-			Afr_gs = gridspec.GridSpec(1,1) 
-			Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
-			Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
-			Afr_ax.set_xlabel('Number of particles',fontsize = 15)
-			Afr_ax.set_xscale('log')
-			Afr_ax.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
-
-
-			ls = ['-','--',':']
-
-
-			for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						Afr_ax.errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
-							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
-
-
-			leg = [Line2D([0],[0],ls='-',color='Black'),
-					Line2D([0],[0],ls='--',color='Black'),
-					Line2D([0],[0],ls=':',color='Black'),
-					Line2D([0],[0],ls='-',color='C0'),
-					Line2D([0],[0],ls='-',color='C1'),
-					Line2D([0],[0],ls='-',color='C2')]				
-			Afr_ax.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
-			# plt.show()
-			Afr_figname = '{dir}/figures/snaps{snap}_Afr_Npart.png'.format(dir=basedir,snap = snap)
-			Afrfig.savefig(Afr_figname, dpi=200)
-
-
-
-		# specfig = plt.figure(figsize=(10,8))
-		# spec_gs = gridspec.GridSpec(1,1) 
-		# spec_ax = specfig.add_subplot(spec_gs[0,0])
-		# spec_ax.set_xlabel('Velocity')
-		# spec_ax.set_ylabel('Spectral flux')
-		# spec_ax.set_ylim([0,40])
-		# spec_ax.legend(fontsize=10)
-		# spec_figname = '{dir}/figures/snaps{tt}_spec_Npart.png'.format(dir=basedir,tt=str(tt).zfill(3))
-		# specfig.savefig(spec_figname, dpi=200)
-
-	else:
-
-		for ii in range(len(snaplist)):#range(rank,len(snaplist),nproc):
-		
-			if rank == 0:
-				snap = snaplist[ii]
-
-				filename = '{dir}snaps/snapshotGD2_{snap}.hdf5'.format(dir=basedir, snap=str(snap).zfill(3))
-				file = h5py.File(filename,'r')
-				parttypes = list(file.keys())
-				head = file['Header']
-				DM = file['PartType1']
-				disk = file['PartType2']
-				gas = file['PartType0']
-
-				[DM_coordinates, DM_masses, DM_velocities] = \
-					particle_info(1,1,DM, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
-				[gas_coordinates, gas_masses, gas_velocities, gas_densities, \
-					gas_internal_energy] = particle_info(1,1,gas, unitmass, ['Coordinates','Masses',\
-						'Velocities','Density','InternalEnergy'],comoving=False)
-				[disk_coordinates, disk_masses, disk_velocities] = \
-					particle_info(1,1,disk, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
-
-				if 'PartType5' in parttypes:
-					newstars = file['PartType5']
-
-					[newstars_coordinates, newstars_masses, newstars_velocities] = \
-					particle_info(1,1,newstars, unitmass, ['Coordinates','Masses','Velocities'],comoving=False)
-
-					stars_coordinates = np.append(stars_coordinates, newstars_coordinates, axis=0)
-					stars_masses = np.append(stars_masses, newstars_masses)
-					stars_velocities = np.append(stars_velocities, newstars_velocities)
-				else:
-					stars_coordinates = disk_coordinates
-					stars_masses = disk_masses
-					stars_velocities = disk_velocities
-
-				COM_DM = calc_COM(DM_coordinates,DM_masses,5.e3)
-
-				DM_coordinates -= COM_DM
-				stars_coordinates -= COM_DM
-				disk_coordinates -= COM_DM
-				gas_coordinates -= COM_DM
-
-				gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 90)
-				gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 90)
-
-
-				gas_masses_unit = gas_masses *unitmass
-				gas_SFR = np.zeros(len(gas_masses))
-				gas_Z = np.zeros(len(gas_masses))+0.001
-				gas_density_unit = gas_densities * (1.e3*1.e3*1.e3)/ unitmass
-				gas_internal_energy_unit = gas_internal_energy * 1.e5*1.e5
-
-
-				HI_masses, H2_masses, gas_neutral_masses = galcalc_ARHS.HI_H2_masses(
-					gas_masses_unit,gas_SFR,gas_Z,gas_density_unit,gas_internal_energy_unit,None,0, mode='u')
-				HI_masses = np.array(HI_masses)
-			else:
-				HI_masses = np.array([])
-				gas_coordinates = np.array([])
-				gas_velocities = np.array([])
-				snap = None
-
-			HI_masses = comm.bcast(HI_masses, root=0)
-			gas_coordinates = comm.bcast(gas_coordinates, root=0)
-			gas_velocities = comm.bcast(gas_velocities, root=0)
-			snap = comm.bcast(snap,root = 0)
-
-
-			phi_list = [0,45,90]
-			theta_list = [90,50,20]
-			Npart_list = [50, 100, 500, 1000, 5000,10000, 50000, 100000]
-			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
-			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
-
-			for nn in range(len(Npart_list)):
-				Npart = Npart_list[nn]
-				if rank == 0:
-					HI_masses_temp = HI_masses * len(HI_masses) / Npart
-				else:
-					HI_masses_temp = None
-				HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
-
-				for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						phi = phi_list[pp]
-						theta = theta_list[tt]
-						if rank == 0:
-							gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
-							gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
-						else:
-							gas_coords_temp = None
-							gas_vel_temp = None
-
-						gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
-						gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
-
-						for ss in range(rank,1000,nproc):
-							particle_sample = nprand.choice(range(len(HI_masses)), Npart)
-								
-							vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
-							gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
-
-							Peak = np.nanmax(spectrum)
-							widths = locate_width(spectrum, [Peak,Peak], 0.2)
-							Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-							Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
-			Afr_list.flatten()
-			np.savetxt('./data/Afr_list_snap{snap}_proc{rank}.dat'.format(snap = snap, rank=rank), 
-				Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
-
-			comm.Barrier()
-			
-def resolution_test_EAGLE():
-
-	comm = MPI.COMM_WORLD
-	rank = comm.Get_rank()
-	nproc = comm.Get_size()
-
-	unitmass = 1.e10
-	gals = [8339149]#,2958109]
-
-	snaplist = [0,25,50,75]
-	plot = True
-
-	basedir = '/media/data/simulations/EAGLE_galaxies/'
-
-	if plot:
-
-		for ID in gals:
-
-			phi_list = [0,45,90]
-			theta_list = [90,50,20]
-			Npart_list = [50, 100, 500, 1000, 5000, 10000, 20000]
-			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
-			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
-			
-
-			filename = '{basedir}EAGLE_galaxyID{ID}.hdf5'.format(basedir = basedir,ID=ID)
-
-			Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
-			for proc in range(Nproc):
-				file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
-				data = np.loadtxt(file)
-				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
-				Afr_list += data
-
-			for nn in range(len(Npart_list)):
-				for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
-						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
-
-			Afrfig = plt.figure(figsize=(10,8))
-			Afr_gs = gridspec.GridSpec(1,1) 
-			Afr_ax = Afrfig.add_subplot(Afr_gs[0,0])
-			Afr_ax.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
-			Afr_ax.set_xlabel('Number of particles',fontsize = 15)
-			Afr_ax.set_xscale('log')
-			Afr_ax.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
-
-
-			ls = ['-','--',':']
-
-
-			for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						Afr_ax.errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
-							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
-
-
-			leg = [Line2D([0],[0],ls='-',color='Black'),
-					Line2D([0],[0],ls='--',color='Black'),
-					Line2D([0],[0],ls=':',color='Black'),
-					Line2D([0],[0],ls='-',color='C0'),
-					Line2D([0],[0],ls='-',color='C1'),
-					Line2D([0],[0],ls='-',color='C2')]				
-			Afr_ax.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
-			# plt.show()
-			Afr_figname = '{basedir}/figures/EAGLE{ID}_Afr_Npart.png'.format(basedir=basedir,ID=ID)
-			Afrfig.savefig(Afr_figname, dpi=200)
-
-	else:
-
-		for ii in range(len(gals)):#range(rank,len(snaplist),nproc):
-		
-			if rank == 0:
-				ID = gals[ii]
-				filename = '/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/EAGLE_galaxyID{ID}.hdf5'.format(ID=ID)
-				
-				gas_coordinates, gas_velocities, HI_masses = read_EAGLE(filename)
-			else:
-				HI_masses = np.array([])
-				gas_coordinates = np.array([])
-				gas_velocities = np.array([])
-				ID = None
-
-			HI_masses = comm.bcast(HI_masses, root=0)
-			gas_coordinates = comm.bcast(gas_coordinates, root=0)
-			gas_velocities = comm.bcast(gas_velocities, root=0)
-			ID = comm.bcast(ID, root = 0)
-
-			# print(ID)
-			# print(len(HI_masses))
-			comm.Barrier()
-			# exit()
-
-			phi_list = [0,45,90]
-			theta_list = [90,50,20]
-			Npart_list = [50, 100, 500, 1000, 5000, 10000, 20000]
-			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
-			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
-
-			for nn in range(len(Npart_list)):
-				Npart = Npart_list[nn]
-				if rank == 0:
-					HI_masses_temp = HI_masses * len(HI_masses) / Npart
-				else:
-					HI_masses_temp = None
-				HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
-
-				for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						phi = phi_list[pp]
-						theta = theta_list[tt]
-						if rank == 0:
-							gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
-							gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
-						else:
-							gas_coords_temp = None
-							gas_vel_temp = None
-
-						gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
-						gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
-
-						for ss in range(rank,1000,nproc):
-							particle_sample = nprand.choice(range(len(HI_masses)), Npart)
-								
-							vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
-							gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
-
-							Peak = np.nanmax(spectrum)
-							widths = locate_width(spectrum, [Peak,Peak], 0.2)
-							Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-							Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
-			Afr_list.flatten()
-			np.savetxt('/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/data/restest{ID}_proc{rank}.dat'.format(ID=ID, rank=rank), 
-				Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
-
-			comm.Barrier()
-
 def plot_controlled_run():
 
 	comm = MPI.COMM_WORLD
@@ -980,213 +1530,6 @@ def hydro_run():
 
 	plot_spatial_radial_spectrum(0, Rvir, gas_coordinates, gas_velocities, gas_neutral_masses,\
 	Rmol, vel, spectrum, spectrum_all, widths)
-
-def TNGsnap():
-
-	Rvir = 250
-	# unitmass = 1.e10
-
-	base = '/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/hydro_snapshot/556247'
-
-	f = open(base + '_stars.txt')
-	names = f.readline().split(', ')
-	f.close()
-	names[0] = names[0].split('# ')[-1]
-	names[-1] = names[-1].split('\n')[0]
-
-	stars = np.loadtxt(base + '_stars.txt',skiprows=2)
-	stars_coordinates = stars[:,1:4]
-	stars_velocities = stars[:,4:7]
-	stars_masses = stars[:,7] #* unitmass
-
-	gas = np.loadtxt(base + '_gas.txt',skiprows=2)
-	gas_coordinates = gas[:,1:4]
-	gas_velocities = gas[:,4:7]
-	gas_masses = gas[:,7] #* unitmass
-	gas_neutral_masses = gas[:,8] * gas_masses
-	HImass_GK11 = gas[:,9]
-	HImass_GD14 = gas[:,10]
-	HImass_K13 = gas[:,11]
-	H2mass_GK11 = gas[:,12]
-	H2mass_GD14 = gas[:,13]
-	H2mass_K13 = gas[:,14]
-
-
-
-	COM_gas = calc_COM(gas_coordinates, gas_masses, Rvir)
-	COM_stars = calc_COM(stars_coordinates, stars_masses, Rvir)
-	gas_coordinates -= COM_gas
-	stars_coordinates -= COM_stars
-
-	gas_eigvec = diagonalise_inertia(gas_coordinates, gas_masses, Rvir)
-	gas_coordinates = gas_coordinates @ gas_eigvec
-	stars_coordinates = stars_coordinates @ gas_eigvec
-
-	gas_velocities = gas_velocities @ gas_eigvec
-
-	plt.scatter(gas_coordinates[:,0],gas_coordinates[:,1],s=0.05)
-	plt.show()
-
-
-	gas_radii =  np.sqrt(np.nansum(gas_coordinates**2.e0, axis=1))
-
-	gas_coords_faceon = calc_coords_obs(gas_coordinates, 180, 0)
-	gas_coords_edgeon = calc_coords_obs(gas_coordinates, 180, 90)
-	gas_vel_edgeon = calc_vel_obs(gas_velocities, 180 , 90)
-
-	spectrum_spatial_contribution(gas_coordinates, gas_velocities, HImass_K13)
-
-
-	# gas_Pextk = calc_Pextk_midpressure(stars_coordinates, stars_masses, gas_coordinates, gas_neutral_masses)
-	# Rmol = calc_Rmol(gas_Pextk)
-	# HI_masses = gas_neutral_masses / (1.e0 + Rmol)
-	# H2_masses = gas_neutral_masses - HI_masses
-
-	# HImass_list = [HI_masses, HImass_GK11, HImass_K13, HImass_GD14]
-
-	# compare_radialSigma(gas_coordinates, HImass_list,['BR06','GK11','K13','GD14'],40)
-
-	# compare_spectra(gas_coords_edgeon, gas_vel_edgeon, HImass_list, ['BR06','GK11','K13','GD14'])
-
-	# map_asymmetry_viewangle(gas_coordinates,gas_velocities,HI_masses)
-
-	print(np.nanmax(HI_masses),np.nanmin(HI_masses))
-	print('total HI mass',np.nansum(HI_masses),'fraction=',np.nansum(HI_masses)/np.nansum(stars_masses))
-	print('total H2 mass',np.nansum(H2_masses),'fraction=',np.nansum(H2_masses)/np.nansum(stars_masses))
-
-	gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 17)
-	gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 17)
-
-	vel, spectrum = calc_spectrum(gas_coords_edgeon, gas_vel_edgeon, HI_masses)
-	PeaklocL, PeaklocR = locate_peaks(spectrum)
-	widths = locate_width(spectrum, [spectrum[PeaklocL],spectrum[PeaklocR]], 0.2)
-	Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-
-	plt.plot(vel, spectrum)
-	plt.plot([vel[PeaklocL],vel[PeaklocL]],[0,20])
-	plt.plot([vel[PeaklocR],vel[PeaklocR]],[0,20])
-	plt.show()
-	print(PeaklocL, PeaklocR)
-	print(widths)
-	print(Afr)
-
-
-	# plot_spatial_radial_spectrum(0, Rvir, gas_coordinates, gas_velocities, HI_masses, H2_masses)
-
-def read_EAGLE(filename):
-
-	unitmass = 1.e10
-	catalogue = Table.read('/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/EAGLE_cat.ascii', format='ascii')
-	ID = int(filename.split('ID')[-1].split('.')[0])
-	catref = np.where(np.array(catalogue['GalaxyID']) == ID)[0]
-
-
-	file = h5py.File(filename,'r')
-	if 'PartType0' in list(file.keys()):
-		head = file['Header']
-		DM = file['PartType1']
-		stars = file['PartType4']
-		gas = file['PartType0']
-
-		a = head.attrs['ExpansionFactor']
-		h = head.attrs['HubbleParam']
-
-		[DM_coordinates, DM_velocities] = particle_info(a, h, DM, unitmass, ['Coordinates','Velocity'])
-		DM_masses = np.ones(len(DM_coordinates))*head.attrs['MassTable'][1] * a**(0) * h**(-1)
-
-		[gas_coordinates, gas_masses, gas_velocities, gas_densities, gas_internal_energy, gas_temperature] = \
-				particle_info(a, h, gas, unitmass, ['Coordinates','Mass','Velocity','Density','InternalEnergy','Temperature'])
-
-		[stars_coordinates, stars_masses, stars_velocities] = \
-				particle_info(a, h, stars, unitmass, ['Coordinates','Mass','Velocity'])
-
-		COP = np.array(catalogue['CentreOfPotential_x','CentreOfPotential_y','CentreOfPotential_z'][catref])[0]
-		COM = np.array(catalogue['CentreOfMass_x','CentreOfMass_y','CentreOfMass_z'][catref])[0]
-		COV = np.array(catalogue['Velocity_x','Velocity_y','Velocity_z'][catref])[0]
-		COP_group = np.array(catalogue['GroupCentreOfPotential_x','GroupCentreOfPotential_y','GroupCentreOfPotential_z'][catref])[0]
-		
-		COP = np.array([i for i in COP])
-		COP_group = np.array([i for i in COP_group])
-		COM = np.array([i for i in COM])
-		COV = np.array([i for i in COV])
-
-		DM_coordinates -= COP
-		gas_coordinates -= COP
-		stars_coordinates -= COP
-
-		stars_radii = np.sqrt(np.nansum(stars_coordinates**2.e0, axis=1))
-		gas_radii = np.sqrt(np.nansum(gas_coordinates**2.e0, axis=1))
-		DM_radii = np.sqrt(np.nansum(DM_coordinates**2.e0, axis=1))
-
-		p_crit = 3 * (h*100)**2.e0 / (8 * np.pi * (4.3e-3 *1.e-6*1.e10 )  )		# in 1.e10Msun/Mpc^3
-		Rvir = 0.005
-		rho = 200 * p_crit
-		while(rho >= 200 * p_crit):
-			rho = np.nansum(DM_masses[DM_radii < Rvir]) / (4. * np.pi * Rvir*Rvir*Rvir / 3.)
-			Rvir += 0.01
-	
-		DM_coordinates = DM_coordinates[DM_radii<=Rvir]
-		DM_masses = DM_masses[DM_radii<=Rvir]*1.e10
-		DM_velocities = DM_velocities[DM_radii<=Rvir]
-
-		stars_coordinates = stars_coordinates[stars_radii<=Rvir]
-		stars_masses = stars_masses[stars_radii<=Rvir]
-		stars_velocities = stars_velocities[stars_radii<=Rvir]
-
-		gas_coordinates = gas_coordinates[gas_radii<=Rvir]
-		gas_masses = gas_masses[gas_radii<=Rvir]
-		gas_velocities = gas_velocities[gas_radii<=Rvir]
-		gas_densities = gas_densities[gas_radii<=Rvir]
-		gas_internal_energy = gas_internal_energy[gas_radii<=Rvir]
-		gas_temperature = gas_temperature[gas_radii<=Rvir]
-
-		print('DM mass[1.e12]',np.nansum(DM_masses) / 1.e12)
-		print('stellar mass [1.e10]',np.nansum(stars_masses) / 1.e10)
-		print('Total gas mass [1.e10]', np.nansum(gas_masses) / 1.e10)
-		print('Stellar fraction',np.nansum(stars_masses) / np.nansum(DM_masses))
-		print('Total Gas fraction',np.nansum(gas_masses) / np.nansum(stars_masses))
-		Rvir *= 1.e3
-		print('Virial radius',Rvir, ' kpc')
-		
-		DM_coordinates *= 1.e3
-		gas_coordinates *= 1.e3
-		stars_coordinates *= 1.e3
-
-		DM_velocities -= COV
-		gas_velocities -= COV
-		stars_velocities -= COV
-
-		COM_stars_tot = np.array([0.,0.,0.])
-		
-		COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.1*Rvir)
-		gas_coordinates -= COM_stars
-		stars_coordinates -= COM_stars
-
-		COM_stars_tot -= COM_stars
-
-		eigvec = orientation_matrix(stars_coordinates, stars_masses)
-		stars_coordinates = stars_coordinates @ eigvec
-		gas_coordinates = gas_coordinates @ eigvec
-		DM_coordinates = DM_coordinates @ eigvec
-
-		COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = 0.2*Rvir, Zmax=0.1*Rvir)
-		gas_coordinates -= COM_stars
-		stars_coordinates -= COM_stars
-		COM_stars_tot -= COM_stars
-
-		HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
-		HI_masses = HI_masses[gas_radii <= Rvir/1.e3]
-		H2_masses = H2_masses[gas_radii <=Rvir/1.e3]
-
-		gas_velocities = gas_velocities @ eigvec
-		DM_velocities = DM_velocities @ eigvec
-		stars_velocities = stars_velocities @ eigvec
-
-	return gas_coordinates, gas_velocities, HI_masses
-		
-
-
-	
 
 def EAGLEsnap():
 	
@@ -1427,17 +1770,21 @@ def EAGLEsnap():
 	exit()
 
 
-
 ##############################################################################################################
 
-# def read_TNGsnap(base)
+
+
+#### particle and structural stuff
+
 	
-def particle_info(a, h, part, unitmass, keys, cgs=False, comoving=True):
+def particle_info(a, h, part, unitmass, keys, subset = [], cgs=False, comoving=True):
 
 	data = []
 	if comoving == True:
 		for key in keys:
 			group = part[key]
+			if len(subset)> 0:
+				group = group[subset]
 			aexp = a**group.attrs['aexp-scale-exponent']
 			hexp = h**group.attrs['h-scale-exponent']
 			CGSconv = group.attrs['CGSConversionFactor']
@@ -1453,6 +1800,8 @@ def particle_info(a, h, part, unitmass, keys, cgs=False, comoving=True):
 	else:
 		for key in keys:
 			group = np.array(part[key])
+			if len(subset)> 0:
+				group = group[subset]
 
 			if 'Mass' in key:
 				group = group * unitmass
@@ -1495,81 +1844,6 @@ def calc_COV(coordinates, velocities, masses, Rmax = None, Zmax = None):
 					np.nansum(velocities[:,1]*masses, axis=0) / np.nansum(masses),\
 					np.nansum(velocities[:,2]*masses, axis=0) / np.nansum(masses)])
 	return COV
-
-def COM_COP_offset(Rvir,filename,DM_coordinates, DM_masses, stars_coordinates, stars_masses, gas_coordinates, gas_masses,HI_masses,save=False):
-	COM_gas = calc_COM(gas_coordinates, gas_masses, Rmax = Rvir)
-	COM_HI = calc_COM(gas_coordinates, HI_masses, Rmax = Rvir)
-	COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = Rvir)
-	COM_DM = calc_COM(DM_coordinates, DM_masses, Rmax = Rvir)
-
-	COM_offset_gas = np.sqrt(np.nansum((np.array([0,0,0])- COM_gas)**2.e0))/Rvir
-	COM_offset_HI = np.sqrt(np.nansum((np.array([0,0,0])- COM_HI)**2.e0))/Rvir
-	COM_offset_stars = np.sqrt(np.nansum((np.array([0,0,0]) - COM_stars)**2.e0))/Rvir
-	COM_offset_DM = np.sqrt(np.nansum((np.array([0,0,0]) - COM_DM)**2.e0))/Rvir
-
-	COM_gas_disk = calc_COM(gas_coordinates, gas_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-	COM_HI_disk = calc_COM(gas_coordinates, HI_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-	COM_stars_disk = calc_COM(stars_coordinates, stars_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-	COM_DM_disk = calc_COM(DM_coordinates, DM_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-
-	COM_offset_gas_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_gas_disk)**2.e0))/Rvir
-	COM_offset_HI_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_HI_disk)**2.e0))/Rvir
-	COM_offset_stars_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_stars_disk)**2.e0))/Rvir
-	COM_offset_DM_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_DM_disk)**2.e0))/Rvir
-
-	fig, ax = plt.subplots()
-	ax.set_ylim([0,0.2])
-	ax.scatter([0,1,2,3],[COM_offset_gas,COM_offset_HI,COM_offset_DM, COM_offset_stars],color='Blue',label = 'Within Rvir')
-	ax.scatter([0,1,2,3],[COM_offset_gas_disk,COM_offset_HI_disk,COM_offset_DM_disk, COM_offset_stars_disk],color='Red',label = 'Within disk')
-	ax.set_xticks([0,1,2,3])
-	ax.set_xticklabels(['Gas','HI','DM','Stars'],fontsize=12)
-	ax.set_ylabel('Offset from COP / Rvir',fontsize=12)
-	ax.set_title('EAGLE ID = {name}, Rvir = {Rvir:.2f}'.format(name=filename.split('ID')[-1].split('.')[0],Rvir=Rvir),fontsize=12)
-	ax.legend(fontsize=12)
-	if save == True:
-		outname = './figures/COM_offsets_EAGLE{name}.png'.format(name=filename.split('ID')[-1].split('.')[0])
-		fig.savefig(outname, dpi=150)
-	else:
-		plt.show()
-		plt.close()
-
-def COV_Per_offset(Rvir,filename,DM_coordinates,DM_velocities, DM_masses, stars_coordinates,stars_velocities, \
-	stars_masses, gas_coordinates, gas_velocities, gas_masses, HI_masses, save=False):
-	COV_gas = calc_COV(gas_coordinates, gas_velocities, gas_masses, Rmax = Rvir)
-	COV_HI = calc_COV(gas_coordinates, gas_velocities, HI_masses, Rmax = Rvir)
-	COV_stars = calc_COV(stars_coordinates, stars_velocities, stars_masses, Rmax = Rvir)
-	COV_DM = calc_COV(DM_coordinates, DM_velocities, DM_masses, Rmax = Rvir)
-
-	COV_offset_gas = np.sqrt(np.nansum((np.array([0,0,0])- COV_gas)**2.e0))
-	COV_offset_HI = np.sqrt(np.nansum((np.array([0,0,0])- COV_HI)**2.e0))
-	COV_offset_stars = np.sqrt(np.nansum((np.array([0,0,0]) - COV_stars)**2.e0))
-	COV_offset_DM = np.sqrt(np.nansum((np.array([0,0,0]) - COV_DM)**2.e0))
-
-	COV_gas_disk = calc_COV(gas_coordinates, gas_velocities, gas_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-	COV_HI_disk = calc_COV(gas_coordinates, gas_velocities, HI_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-	COV_stars_disk = calc_COV(stars_coordinates, stars_velocities, stars_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-	COV_DM_disk = calc_COV(DM_coordinates, DM_velocities, DM_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
-
-	COV_offset_gas_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_gas_disk)**2.e0))
-	COV_offset_HI_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_HI_disk)**2.e0))
-	COV_offset_stars_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_stars_disk)**2.e0))
-	COV_offset_DM_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_DM_disk)**2.e0))
-
-	fig, ax = plt.subplots()
-	# ax.set_ylim([0,0.2])
-	ax.scatter([0,1,2,3],[COV_offset_gas,COV_offset_HI,COV_offset_DM, COV_offset_stars],color='Blue',label = 'Within Rvir')
-	ax.scatter([0,1,2,3],[COV_offset_gas_disk,COV_offset_HI_disk,COV_offset_DM_disk, COV_offset_stars_disk],color='Red',label = 'Within disk')
-	ax.set_xticks([0,1,2,3])
-	ax.set_xticklabels(['Gas','HI','DM','Stars'],fontsize=12)
-	ax.set_ylabel('Offset from Peculiar velocity [km/s]',fontsize=12)
-	ax.set_title('EAGLE ID = {name}, Rvir = {Rvir:.2f}'.format(name=filename.split('ID')[-1].split('.')[0],Rvir=Rvir),fontsize=12)
-	ax.legend(fontsize=12)
-	if save == True:
-		outname = './figures/COV_offsets_EAGLE{name}.png'.format(name=filename.split('ID')[-1].split('.')[0])
-		fig.savefig(outname, dpi=150)
-	else:
-		plt.show()
-		plt.close()
 
 def diagonalise_inertia(coordinates, masses, rad):
 
@@ -1643,24 +1917,602 @@ def orientation_matrix(coordinates, masses, show = False):
 
 	return eigvec
 
-def create_gif(basedir):
-	import glob
-	import imageio
-	files = glob.glob('{dir}/figures/snaps*.png'.format(dir=basedir))
-	files = np.array(files)
-	# print(files)
-	nums = np.zeros(len(files))
-	for ii in range(len(files)):
-		nums[ii] = int('{}'.format(files[ii].split('snaps')[-1].split('.png')[0]))
-	files = files[np.argsort(nums)]
-	# print(files)
+def disk_exp(rad, A, Rstar):
+	d = A - (rad/Rstar)*np.log(10)
+	return d
 
-	images = []
-	for file in files:
-		print(file)
-		images.append(imageio.imread(file))
-	imageio.mimsave('{dir}/figures/gif.gif'.format(dir=basedir),images,duration = 0.005*len(files))
+def log_sersic(rad,A,Rstar,N):
+	e = A - np.log(10)*((rad/Rstar)**(1./N))
+	return e
 
+def calc_coords_obs(coordinates, view_phi, view_theta):
+	view_theta *= np.pi/180.e0
+	view_phi *= np.pi/180.e0
+
+	coords_obs = np.zeros([len(coordinates),2])
+	coords_obs[:,0] = (coordinates[:,0] * np.sin(view_phi) + 
+							coordinates[:,1]*np.cos(view_phi))
+	coords_obs[:,1] = ( (coordinates[:,0] * np.cos(view_phi) - 
+							coordinates[:,1]*np.sin(view_phi)) * np.cos(view_theta) +
+							coordinates[:,2] * np.sin(view_theta) )
+	return coords_obs
+
+def calc_vel_obs(velocities, view_phi, view_theta):
+	view_theta *= np.pi/180.e0
+	view_phi *= np.pi/180.e0
+
+	vel_LOS = velocities[:,0]*np.cos(view_phi) * np.abs(np.sin(view_theta)) +\
+				velocities[:,1] * -1.e0*np.sin(view_phi) * np.abs(np.sin(view_theta)) +\
+				velocities[:,2] * np.cos(view_theta)								
+	return vel_LOS
+
+def calc_spatial_dist(coordinates, masses, Rmax):
+	dim = 200
+	image = np.zeros([dim,dim])
+	dx = 2*Rmax/dim
+	spacebins = np.arange(-1*Rmax,Rmax+dx,dx)
+	area = dx*dx*1.e6
+	for xx in range(len(spacebins)-1):
+		xx_low = spacebins[xx]
+		xx_high = spacebins[xx+1]
+		for yy in range(len(spacebins)-1):
+			yy_low = spacebins[yy]
+			yy_high = spacebins[yy+1]
+
+			image[yy,xx] = np.log10(np.nansum(masses[(coordinates[:,0] >= xx_low) & (coordinates[:,0]<xx_high) &\
+									(coordinates[:,1]>=yy_low) & (coordinates[:,1]<yy_high)])/area)
+
+	return spacebins[0:-1] + dx, image
+
+def calc_sigma(coordinates, masses, Rmax = None, Zmax = None):
+
+	z = coordinates[:,2]
+	coordinates = calc_coords_obs(coordinates, 0, 0)
+	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
+
+	if Rmax != None:
+		if Zmax != None:
+			coordinates = coordinates[(radii < Rmax) & (z < Zmax)]
+			masses = masses[(radii < Rmax) & (z < Zmax)]
+		else:
+			coordinates = coordinates[radii < Rmax]
+			masses = masses[radii < Rmax]
+	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
+	radii_argsort = np.argsort(radii)
+	radii = radii[radii_argsort]
+	masses = masses[radii_argsort]
+
+	Npart = len(masses)
+	Nbins = 20
+	rad_points = np.zeros(Nbins)
+	sigma = np.zeros(Nbins)
+
+	for ii in range(Nbins):
+		low = (ii) * int(Npart / (Nbins))
+		high = (ii + 1) * int(Npart / (Nbins))
+		inbin_radii = radii[low:high]
+		inbin_masses = masses[low:high]
+
+		minrad = np.min(inbin_radii)
+		maxrad = np.max(inbin_radii)
+		area = np.pi * (maxrad * maxrad - minrad * minrad) * 1.e6
+		sigma[ii] = np.log10(np.nansum(inbin_masses)/area)
+		rad_points[ii] = np.median(inbin_radii)
+
+	return rad_points, sigma
+
+def calc_RC(coordinates, velocities, Rmax=None, Zmax=None):
+
+	z = coordinates[:,2]
+	coordinates = calc_coords_obs(coordinates, 0, 0)
+	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
+	
+	if Rmax != None:
+		if Zmax != None:
+			coordinates = coordinates[(radii < Rmax) & (z < Zmax)]
+			velocities = velocities[(radii < Rmax) & (z < Zmax)]
+		else:
+			coordinates = coordinates[radii < Rmax]
+			velocities = velocities[radii < Rmax]
+	vcirc = np.sqrt(velocities[:,0]**2.e0 + velocities[:,1]**2.e0)
+	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
+	radii_argsort = np.argsort(radii)
+	radii = radii[radii_argsort]
+	vcirc = vcirc[radii_argsort]
+
+	Npart = len(coordinates)
+	Nbins = 20
+	rad_points = np.zeros(Nbins)
+	rot_cur = np.zeros(Nbins)
+
+	for ii in range(Nbins):
+		low = (ii) * int(Npart / (Nbins))
+		high = (ii + 1) * int(Npart / (Nbins))
+		inbin_radii = radii[low:high]
+		inbin_vcirc = vcirc[low:high]
+
+		rot_cur[ii] = np.median(inbin_vcirc)
+		rad_points[ii] = np.median(inbin_radii)
+
+	return rad_points,rot_cur
+
+
+
+##### HI prescription stuff
+
+def calc_Pextk_densityenergy(gas_densities, gas_internal_energy, lenunit ='kpc'):
+	unitmass = 1.989e43						#1.e10 Msun in g
+	if lenunit == 'kpc':
+		unitlen = 3.086e21					#1 kpc in cm
+	elif lenunit == 'mpc':
+		unitlen = 3.086e24					#1 Mpc in cm
+	unitvel = 1.e5							#1 km/s in cm/s
+	kB = 1.381e-16							#Boltzmann constant
+	gamma = 5./3.							#Adiabatic constant
+	gas_densities *= unitmass / (unitlen ** 3.)
+	gas_internal_energy *= unitvel * unitvel
+	Pextk = (gamma - 1.) * gas_densities * gas_internal_energy / kB
+
+	return Pextk
+
+def calc_Pextk_midpressure(stars_coordinates, stars_masses, gas_coordinates, gas_neutral_masses):#,gas_zvel):
+	
+	hstar = hstar_from_radfit(stars_coordinates, stars_masses, 40)
+
+	dim = 100
+	imgphys = 80.		#kpc
+	dx = imgphys/dim
+	pixarea = dx*dx*1.e6	#pc^2
+	spacebins = np.arange(-0.5*imgphys, 0.5*imgphys + dx, dx)
+	Pextk = np.zeros(len(gas_neutral_masses))
+	for xx in range(len(spacebins)-1):
+		xx_low = spacebins[xx]
+		xx_high = spacebins[xx+1]
+		for yy in range(len(spacebins)-1):
+			yy_low = spacebins[yy]
+			yy_high = spacebins[yy+1]
+
+			inspace_gas = np.where((gas_coordinates[:,0] >= xx_low) & (gas_coordinates[:,0]<xx_high) &\
+									(gas_coordinates[:,1]>=yy_low) & (gas_coordinates[:,1]<yy_high) &\
+									(np.abs(gas_coordinates[:,2] < 1*hstar/1.e3)))[0]
+
+			if len(inspace_gas) != 0:
+				sigma_gas = np.nansum(gas_neutral_masses[inspace_gas]) * 1.36 / pixarea
+				Zdisp_gas = 7
+
+				inspace_stars = np.where((stars_coordinates[:,0] >= xx_low) & (stars_coordinates[:,0]<xx_high) &\
+									(stars_coordinates[:,1]>=yy_low) & (stars_coordinates[:,1]<yy_high) &\
+									(np.abs(stars_coordinates[:,2] < 1*hstar/1.e3)))[0]
+
+				if len(inspace_stars) != 0:
+					sigma_stars = np.nansum(stars_masses[inspace_stars]) / pixarea
+					Pextk[inspace_gas] = 272.e0*sigma_gas*(sigma_stars**0.5)*Zdisp_gas*(hstar**-0.5)
+	Pextk[np.abs(gas_coordinates[:,2]) > 1*hstar/1.e3] = 0
+
+	return Pextk
+
+def calc_fH2_LGS(gas, unitmass, a, h):
+	
+	Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
+	Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
+
+
+	[masses, densities, Z, Habundance, temperature, SFR] = \
+					particle_info(a, h, gas, unitmass, ['Mass','Density','Metallicity','ElementAbundance/Hydrogen'\
+														,'Temperature','StarFormationRate'],cgs=True)
+	
+	Z = Z/0.0127
+	fH2 = np.zeros(len(masses))
+	neut_frac = np.zeros(len(masses))
+	redshift = 1./a - 1.
+	Hmass = masses*Habundance
+
+	for i in range(len(masses)): 
+		neut_frac[i], fH2[i] = Find_H2_LGS.find_fH2(densities[i], Hmass[i], masses[i], Z[i], SFR[i], temperature[i], Hm2012_data, Rahmati2013, redshift)
+
+	return neut_frac, fH2
+
+def calc_HI_H2_ARHS(gas, unitmass, a, h, neutral_frac = False):
+
+	# Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
+	# Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
+
+	[masses, densities, Z, temperature, U, SFR] = \
+					particle_info(a, h, gas, unitmass, ['Mass','Density','Metallicity'\
+														,'Temperature','InternalEnergy','StarFormationRate'],cgs=True)
+	masses =  masses / 1.989e33	
+	SFR = SFR * (3600*24*365.25) / 1.989e33
+	Z = Z
+	densities = densities * (3.086e18*3.086e18*3.086e18) / 1.989e33
+	U = U/(1.e4)
+	redshift = 1./a - 1.
+
+	if neutral_frac:
+		neutral_fraction = particle_info(a,h,gas,unitmass,['NeutralHydrogenAbundance'], cgs = True)
+		neutral_masses = neutral_fraction * unitmass
+		HI_masses, H2_masses = galcalc_ARHS.HI_H2_masses(masses,SFR,Z,densities,temperature,neutral_masses,redshift)
+	else:
+		HI_masses, H2_masses, neutral_masses = galcalc_ARHS.HI_H2_masses(masses,SFR,Z,densities,temperature,None,redshift)
+	return HI_masses,H2_masses, neutral_masses
+
+def calc_Rmol(Pextk, coeff = 'LR08'):
+
+	if coeff == 'BR06':
+		div = 4.3e4
+		power = 0.92
+	elif coeff == 'LR08':
+		div = 10.**4.23
+		power = 0.8
+
+	Rmol = (Pextk / div)**power
+	return Rmol
+
+def radial_scaleheight(coordinates, masses, Rmax):
+	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
+	inspace = np.where((radii <= Rmax) & (coordinates[:,2]<0.5*Rmax))[0]
+	coordinates = coordinates[inspace]
+	masses = masses[inspace]
+	radii = radii[inspace]
+
+	radii_argsort = np.argsort(radii)
+	radii = radii[radii_argsort]
+	coordinates = coordinates[radii_argsort]
+	masses = masses[radii_argsort]
+	Npart = len(coordinates)
+	Nbins = 20
+	rad_points = np.zeros(Nbins)
+	scaleheight = np.zeros(Nbins)
+
+	for ii in range(Nbins):
+		low = (ii) * int(Npart / (Nbins))
+		high = (ii + 1) * int(Npart / (Nbins))
+		inbin_coordinates = coordinates[low:high,2]
+		inbin_radii = radii[low:high]
+		rad_points[ii] = np.median(inbin_radii)
+		scaleheight[ii] = np.percentile(inbin_coordinates[inbin_coordinates>=0], 100* 1./np.exp(1)) * 1000
+		scaleheight[ii] = np.percentile(np.abs(inbin_coordinates), 100* 1./(np.exp(1))) * 1000
+
+	hstar = hstar_from_radfit(coordinates,masses,40)
+
+	hstar1 = np.percentile(coordinates[coordinates[:,2]>=0,2], 100* 1./np.exp(1)) * 1000
+	# hstar1 = np.percentile(np.abs(coordinates[:,2]), 100* 1./np.exp(1)) * 1000
+	hstar2 = np.percentile(np.abs(coordinates[:,2]), 100* 2./(np.exp(1))) * 1000
+
+	# return hstar1
+	plt.plot(rad_points,scaleheight,label = 'Percentile')
+	plt.plot([2.5,20],[hstar,hstar], label = 'Radial fit')
+	plt.plot([2.5,20],[hstar1,hstar1], label = 'Percentile: all particles')
+	plt.plot([2.5,20],[hstar2,hstar2])
+	plt.xlabel('Radus [kpc]')
+	plt.ylabel('Scaleheight [pc]')
+	plt.title('B/T = 0')
+	plt.legend()
+	plt.show()
+	exit()
+
+def scaleheight_from_scalelength(Rstar):
+	hstar = 10.e0**(-0.23 + 0.8 * np.log10(Rstar))
+	return hstar
+
+def hstar_from_radfit(coordinates, masses, Rmax):
+	radii = np.sqrt(np.nansum(coordinates**2.e0, axis = 1))
+	coordinates = coordinates[radii <= Rmax]
+	masses = masses[radii <= Rmax]
+	radii = radii[radii <= Rmax]
+
+	rad_points, sigma = calc_sigma(coordinates, masses, Rmax)
+	# print(np.diff(sigma))
+	redchisq = 100
+	minrad = 0
+	maxrad = len(sigma)-2
+	while(redchisq > 1.e-3):
+		fit, covar = curve_fit(disk_exp,rad_points[minrad:maxrad],sigma[minrad:maxrad])
+		redchisq = np.nansum((sigma[minrad:maxrad] - disk_exp(rad_points[minrad:maxrad],fit[0],fit[1]))**2.e0)
+		minrad += 1
+	# plt.plot(rad_points,sigma)
+	# plt.plot(rad_points,disk_exp(rad_points,fit[0],fit[1]))
+	# plt.show()
+	Rstar = fit[1] * 1000.
+	print('Disk radial scale length', Rstar)
+	hstar = scaleheight_from_scalelength(Rstar)
+	print('Disk scaleheight', hstar)
+	return hstar
+
+
+
+
+##### spectrum and datacube stuff
+def calc_spectrum(coords_obs, gas_vel_LOS, HI_masses, dist = 50, Vres = 5, beamsize = 30):
+	
+	radii = np.sqrt(np.nansum(coords_obs**2.e0, axis=1))
+	inbeam = np.where(radii <= beamsize)
+	gas_vel_LOS = gas_vel_LOS[inbeam]
+	HI_masses = HI_masses[inbeam]
+
+	vlim = 300.e0
+	vel_bins = np.arange(-vlim,vlim + Vres,Vres)
+	vel_points = vel_bins[0:-1] + 0.5 * Vres
+	spectrum = np.zeros([len(vel_bins) - 1])
+
+	mjy_conv = mjy_conversion(dist, Vres)
+
+	for vv in range(len(vel_bins) - 1):
+		vel_low = vel_bins[vv]
+		vel_high = vel_bins[vv + 1]
+		invel  = np.where( (gas_vel_LOS + 30 >= vel_low) &
+				 			(gas_vel_LOS - 30 < vel_high) )[0]
+				
+		for part in invel:
+			Mfrac = gaussian_CDF(vel_high, gas_vel_LOS[part], 7.e0) - \
+					gaussian_CDF(vel_low, gas_vel_LOS[part], 7.e0)
+			spectrum[vv] += HI_masses[part] * Mfrac * mjy_conv
+	return vel_points, spectrum
+
+def locate_peaks(spectrum):
+
+	PeakL = 0
+	PeaklocL = int(len(spectrum)/2.)
+	chan=1
+	while(chan< len(spectrum)/2 + 5):
+		chan+=1
+		grad = (spectrum[chan] - spectrum[chan-1]) * (spectrum[chan+1] - spectrum[chan])
+		if grad<0 and spectrum[chan]>PeakL:
+			PeaklocL = chan
+			PeakL = spectrum[chan]
+
+	PeakR = 0
+	PeaklocR = int(len(spectrum)/2.)
+	chan = len(spectrum)-1
+	while(chan > len(spectrum)/2 - 5 ):
+		chan-=1
+		grad = (spectrum[chan] - spectrum[chan+1]) * (spectrum[chan-1] - spectrum[chan])
+		if grad<0 and spectrum[chan]>PeakR:
+			PeaklocR = chan
+			PeakR = spectrum[chan]
+
+	return PeaklocL,PeaklocR
+
+def locate_width(spectrum, peaks, level):
+	"""
+	Locate the N% level of the peak on the left and right side of a spectrum
+
+	Parameters
+	----------
+	spectrum : array
+		Input spectrum
+	peaks : list
+		Value of each peak
+	level : float
+		N% of the peaks to measure
+
+	Returns
+	-------
+	Wloc : list
+		Location of N% of each peak in channels
+	"""
+
+	# channels = range(len(spectrum))	
+	SpeakL = peaks[0]
+	SpeakR = peaks[1]
+	wL = -1
+	wR = -1
+	chan = 0
+	while(chan < len(spectrum)-1 and spectrum[chan] < level * SpeakL):
+		chan += 1
+		wL = chan - 1 + ((level * SpeakL - spectrum[chan - 1]) / (
+			spectrum[chan] - spectrum[chan - 1])) 
+
+	chan = len(spectrum) - 2
+	while(chan > 0 and spectrum[chan] < level * SpeakR):
+		chan -= 1
+		wR = chan + 1 + -1.e0 * ((level * SpeakR - spectrum[chan + 1]) / (
+			spectrum[chan] - spectrum[chan + 1])) 
+
+	Wloc = [wL,wR]
+	return Wloc
+
+def areal_asymmetry(spectrum, limits, Vres):
+	"""
+	Measure the asymmetry parameter and integrated flux of a spectrum between limits
+
+	Parameters
+	----------
+	spectrum : array
+		Input spectrum to measure
+	limits : list
+		Lower and upper channels to measure between
+	Vres : float
+		Velocity resolution
+
+	Returns
+	-------
+	Sint : float
+		Integrated flux in units of input spectrum * Vres
+	Afr : float
+		Asymmetry parameter
+	"""
+
+	minchan = limits[0]
+	maxchan = limits[1]
+	midchan = 0.5e0 * (minchan + maxchan)
+	min_val = np.interp(minchan,[np.floor(minchan),np.ceil(minchan)],
+			[spectrum[int(np.floor(minchan))],spectrum[int(np.ceil(minchan))]])
+	max_val = np.interp(maxchan,[np.floor(maxchan),np.ceil(maxchan)],
+			[spectrum[int(np.floor(maxchan))],spectrum[int(np.ceil(maxchan))]])
+	mid_val = np.interp(midchan,[np.floor(midchan),np.ceil(midchan)],
+			[spectrum[int(np.floor(midchan))],spectrum[int(np.ceil(midchan))]])
+
+	Sedge_L = min_val * (np.ceil(minchan) - minchan)
+	Sedge_R = max_val * (maxchan - np.floor(maxchan))
+	Smid_L = mid_val * (midchan - np.floor(midchan))
+	Smid_R = mid_val * (np.ceil(midchan) - midchan )
+
+	S_L = spectrum[int(np.ceil(minchan)):int(np.floor(midchan) + 1)]
+	# S_L = S_L[S_L > 0]
+	S_L = np.nansum(S_L)
+	S_R = spectrum[int(np.ceil(midchan)):int(np.floor(maxchan) + 1)]
+	# S_R = S_R[S_R > 0]
+	S_R = np.nansum(S_R)
+
+	Sint_L = (Sedge_L + S_L + Smid_L) * Vres
+	Sint_R = (Sedge_R + S_R + Smid_R) * Vres
+	Sint = Sint_L + Sint_R
+
+	Afr =  Sint_L / Sint_R 
+	if Afr < 1.e0:
+		Afr = 1.e0 / Afr
+
+	return Sint, Afr	
+
+def mjy_conversion(dist, Vres):
+	conv = 1.e3 / (2.356e5  * (dist ** 2.e0) * Vres)
+	return conv
+
+def gaussian_CDF(x,mu,sigma):
+	prob = 0.5e0 * (1.e0 + erf( (x - mu) / (np.sqrt(2.e0) * sigma) ))
+	return prob
+
+def plot_datacube(tt, basedir, spacebins, velbins, datacube, mjy_conv):
+
+	dx = np.abs(np.diff(spacebins)[0])
+	print(int(1.2/dx))
+	dv = np.abs(np.diff(velbins)[0])
+	levels = [-1, np.log10(0.3), 0,np.log10(3), 1]
+
+	fig = plt.figure(figsize=(15,8))
+	gs = gridspec.GridSpec(1,2) 
+	mom0_ax = fig.add_subplot(gs[0,0])
+	spec_ax = fig.add_subplot(gs[0,1])
+	mom0_ax.set_xlabel('x [kpc]',fontsize=20)
+	mom0_ax.set_ylabel('y [kpc]',fontsize=20)
+	spec_ax.set_xlabel('Velocity',fontsize=20)
+	spec_ax.set_ylabel('Spectral flux',fontsize=20)
+	spec_ax.set_ylim([0,40])
+	spec_ax.tick_params(axis = 'both', which='both', direction = 'in', labelsize=20, length = 8, width = 1.25)
+	mom0_ax.tick_params(axis = 'both', which='both', direction = 'in', labelsize=20, length = 8, width = 1.25)
+
+
+	spectrum = np.nansum(datacube,axis=(0,1)) 
+
+	colors = ['Blue','Orange','Green','Red','Magenta']
+
+	mom0_map = np.nansum(datacube,axis=2)* dv / (mjy_conv * dx * dx * 1.e6)		#Msun /pc^2
+	mom0_map = convolve(mom0_map,Gaussian2DKernel(int(0.8/dx)))
+	mom0_map = np.log10(mom0_map)
+
+	mom0_ax.imshow(mom0_map, extent=[spacebins[0],spacebins[-1],spacebins[0],spacebins[-1]],
+					 vmin=-1,vmax=np.log10(12),cmap='Greys')
+	mom0_ax.contour(spacebins, spacebins, mom0_map, levels = levels, colors=colors, alpha=0.7)
+
+	# mom0_map = np.log10(np.nansum(datacube,axis=2)* dv / (mjy_conv * dx * dx * 1.e6))		#Msun /pc^2
+
+	for ii in range(len(levels)):
+		lev= levels[ii]
+		mask = np.where(mom0_map < lev)
+		datacube[mask[0],mask[1],:] = np.nan
+		spectrum = np.nansum(datacube,axis=(0,1)) 
+		spec_ax.plot(velbins, spectrum, color=colors[ii],
+				label = 'Min $\Sigma_{{HI}}$ = {lev:.2f}'.format(lev=10**lev))
+	plt.legend()
+	
+	savedir = '{dir}/figures/mom0_spec_{tt}_i90.png'.format(dir=basedir, tt=str(tt).zfill(3))
+
+	fig.savefig(savedir, dpi=150)
+	# plt.legend()
+	# plt.show()
+
+
+
+def create_HI_datacube(coordinates, velocities, HI_masses, params = None, filename = None):
+
+	if params ==  None:							#default datacube parameters
+		params = {'dist':50,					#Mpc
+				'cubephys':100,					#kpc (left to right)
+				'cubedim':500,					#pixels 
+				'Vlim':600,						#km/s bandwidth
+				'Vres':5,						#km/s
+				'B_FWHM':1,						#kpc
+				'rms':0}						#mJy RMS noise
+
+	mjy_conv = mjy_conversion(params['dist'], params['Vres'])
+	dx = params['cubephys'] / params['cubedim']
+
+	spacebins = np.arange(-0.5e0 * params['cubephys'], 0.5e0 * params['cubephys'] + dx, dx)
+	velbins = np.arange(-0.5e0 * params['Vlim'], 0.5e0 * params['Vlim'] + params['Vres'], params['Vres'])
+	Nspace = len(spacebins) - 1
+	Nvel = len(velbins) - 1
+	datacube = np.zeros([len(spacebins) - 1, len(spacebins) - 1, len(velbins) - 1])	
+
+	for yy in range(Nspace):
+		ylow = spacebins[yy]
+		yhigh = spacebins[yy + 1]
+		for xx in range(Nspace):
+			xlow = spacebins[xx]
+			xhigh = spacebins[xx + 1]
+			vel_inspace = velocities[(coordinates[:,0] >= xlow) & (coordinates[:,0] < xhigh) & \
+						(coordinates[:,1] >= ylow) & (coordinates[:,1] < yhigh)]
+			
+			if len(vel_inspace) > 0:
+				minvel = np.nanmin(vel_inspace) - 30
+				maxvel = np.nanmax(vel_inspace) + 30
+				velrange_min = np.where(np.abs(velbins - minvel) ==  np.min(np.abs(velbins - minvel)))[0][0] - 1
+				velrange_max = np.where(np.abs(velbins - maxvel) ==  np.min(np.abs(velbins - maxvel)))[0][0] + 1
+				for vv in range(velrange_min, velrange_max):
+					vel_low = velbins[vv]
+					vel_high = velbins[vv + 1]
+					invel  = np.where( (vel_inspace + 30 >= vel_low) &
+							 			(vel_inspace - 30 < vel_high) )[0]
+					for part in invel:
+						Mfrac = gaussian_CDF(vel_high, vel_inspace[part], 7.e0) - \
+								gaussian_CDF(vel_low, vel_inspace[part], 7.e0)
+
+						datacube[yy,xx,vv] += HI_masses[part] * Mfrac * mjy_conv
+
+	Bsigma = params['B_FWHM'] / 2.355														#convert beam FWHM to Gausian stddev for convoluion
+
+	for vv in range(Nvel):
+		datacube[:,:,vv]  = convolve(datacube[:,:,vv], Gaussian2DKernel(int(Bsigma / dx)))
+
+	datacube[:,:,:] += nprand.normal(np.zeros([Nspace, Nspace, Nvel]), params['rms'])		#add noise
+
+	if filename == None:
+		return spacebins, velbins, datacube
+	else:
+		datacube = datacube.reshape((Nspace * Nspace * Nvel))
+		header = 'dist = {dist}\n cubephys = {cubephys}\n dx = {dx}\n Vlim = {Vlim}\n Vres = {Vres}\n'.format(
+			dist = params['dist'], cubephys = params['cubephys'], dx = dx, Vres = params['Vres'], Vlim = params['Vlim'])
+		np.savetxt(filename, datacube, header = header,fmt = "%.6e")
+
+def read_datacube(filename):
+
+	f = open(filename, 'r')
+	for line in f:
+		if 'dist' in line:
+			params = {'dist':float(line.split(' ')[-1]) }
+		if 'cubephys' in line:
+			params['cubephys'] = float(line.split(' ')[-1]) 
+		if 'dx' in line:
+			dx = float(line.split(' ')[-1]) 
+		if 'Vlim' in line:
+			params['Vlim'] = float(line.split(' ')[-1]) 
+		if 'Vres' in line:
+			params['Vres'] = float(line.split(' ')[-1]) 
+	f.close()
+
+	spacebins = np.arange(-0.5e0 * params['cubephys'], 0.5e0 * params['cubephys'] + dx, dx)
+	velbins = np.arange(-0.5e0 * params['Vlim'], 0.5e0 * params['Vlim'] + params['Vres'], params['Vres'])
+	Nspace = len(spacebins) - 1
+	Nvel = len(velbins) - 1
+
+
+	print('reading datacube')
+	datacube = np.loadtxt(filename).reshape((Nspace, Nspace, Nvel))
+
+	return spacebins, velbins, datacube, params
+
+
+
+########### plots
 def compare_spectra(coordinates, velocities, gas_HI_masses, names):
 
 	fig = fig = plt.figure(figsize=(8,10))
@@ -1964,41 +2816,6 @@ def plotgas_spatial_radial_profile(name, DM_coordinates, DM_masses, stars_coordi
 			plt.show()
 			plt.close()
 
-def map_asymmetry_viewangle(tt, coordinates, velocities, HI_masses, save = None):
-
-	if save == 'view':
-		plt.imshow(tt,extent = [0,360,180,0])
-		plt.colorbar()
-		plt.show()
-	else:
-		phi_range = np.arange(0, 360, 5)
-		theta_range = np.arccos(2. * np.arange(0, 1, 0.02) - 1.) * 180./np.pi
-
-		Afr_grid = np.zeros([len(theta_range), len(phi_range)])
-
-		for th in range(len(theta_range)):
-			for ph in range(len(phi_range)):
-
-				phi = phi_range[ph]
-				theta = theta_range[th]
-				# print(phi, theta)
-
-				coords_obs = calc_coords_obs(coordinates, phi, theta)
-				vel_LOS = calc_vel_obs(velocities, phi, theta)
-
-				vel, spectrum = calc_spectrum(coords_obs, vel_LOS, HI_masses)
-				PeaklocL, PeaklocR = locate_peaks(spectrum)
-				widths = locate_width(spectrum, [spectrum[PeaklocL],spectrum[PeaklocR]], 0.2)
-				Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-				Afr_grid[th,ph] = Afr
-
-		if save != None:
-			filename = '{dir}/data/snaps{tt}_Afr_viewgrid.dat'.format(dir=save, tt=str(tt).zfill(3))
-			np.savetxt(filename, Afr_grid)
-		else:
-			plt.imshow(Afr_grid)
-			plt.show()
-
 def spectrum_spatial_contribution(coordinates, velocities, HI_masses):
 
 	coords_obs = calc_coords_obs(coordinates, 0, 90)
@@ -2040,304 +2857,6 @@ def spectrum_spatial_contribution(coordinates, velocities, HI_masses):
 	spec_ax.plot(vel_bins, spectrum,color='Black',lw=3)
 	plt.show()
 	exit()
-
-def gaussian_CDF(x,mu,sigma):
-	prob = 0.5e0 * (1.e0 + erf( (x - mu) / (np.sqrt(2.e0) * sigma) ))
-	return prob
-
-def radial_scaleheight(coordinates, masses, Rmax):
-	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
-	inspace = np.where((radii <= Rmax) & (coordinates[:,2]<0.5*Rmax))[0]
-	coordinates = coordinates[inspace]
-	masses = masses[inspace]
-	radii = radii[inspace]
-
-	radii_argsort = np.argsort(radii)
-	radii = radii[radii_argsort]
-	coordinates = coordinates[radii_argsort]
-	masses = masses[radii_argsort]
-	Npart = len(coordinates)
-	Nbins = 20
-	rad_points = np.zeros(Nbins)
-	scaleheight = np.zeros(Nbins)
-
-	for ii in range(Nbins):
-		low = (ii) * int(Npart / (Nbins))
-		high = (ii + 1) * int(Npart / (Nbins))
-		inbin_coordinates = coordinates[low:high,2]
-		inbin_radii = radii[low:high]
-		rad_points[ii] = np.median(inbin_radii)
-		scaleheight[ii] = np.percentile(inbin_coordinates[inbin_coordinates>=0], 100* 1./np.exp(1)) * 1000
-		scaleheight[ii] = np.percentile(np.abs(inbin_coordinates), 100* 1./(np.exp(1))) * 1000
-
-	hstar = hstar_from_radfit(coordinates,masses,40)
-
-	hstar1 = np.percentile(coordinates[coordinates[:,2]>=0,2], 100* 1./np.exp(1)) * 1000
-	# hstar1 = np.percentile(np.abs(coordinates[:,2]), 100* 1./np.exp(1)) * 1000
-	hstar2 = np.percentile(np.abs(coordinates[:,2]), 100* 2./(np.exp(1))) * 1000
-
-	# return hstar1
-	plt.plot(rad_points,scaleheight,label = 'Percentile')
-	plt.plot([2.5,20],[hstar,hstar], label = 'Radial fit')
-	plt.plot([2.5,20],[hstar1,hstar1], label = 'Percentile: all particles')
-	plt.plot([2.5,20],[hstar2,hstar2])
-	plt.xlabel('Radus [kpc]')
-	plt.ylabel('Scaleheight [pc]')
-	plt.title('B/T = 0')
-	plt.legend()
-	plt.show()
-	exit()
-
-def scaleheight_from_scalelength(Rstar):
-	hstar = 10.e0**(-0.23 + 0.8 * np.log10(Rstar))
-	return hstar
-
-def hstar_from_radfit(coordinates, masses, Rmax):
-	radii = np.sqrt(np.nansum(coordinates**2.e0, axis = 1))
-	coordinates = coordinates[radii <= Rmax]
-	masses = masses[radii <= Rmax]
-	radii = radii[radii <= Rmax]
-
-	rad_points, sigma = calc_sigma(coordinates, masses, Rmax)
-	# print(np.diff(sigma))
-	redchisq = 100
-	minrad = 0
-	maxrad = len(sigma)-2
-	while(redchisq > 1.e-3):
-		fit, covar = curve_fit(disk_exp,rad_points[minrad:maxrad],sigma[minrad:maxrad])
-		redchisq = np.nansum((sigma[minrad:maxrad] - disk_exp(rad_points[minrad:maxrad],fit[0],fit[1]))**2.e0)
-		minrad += 1
-	# plt.plot(rad_points,sigma)
-	# plt.plot(rad_points,disk_exp(rad_points,fit[0],fit[1]))
-	# plt.show()
-	Rstar = fit[1] * 1000.
-	print('Disk radial scale length', Rstar)
-	hstar = scaleheight_from_scalelength(Rstar)
-	print('Disk scaleheight', hstar)
-	return hstar
-
-def disk_exp(rad, A, Rstar):
-	d = A - (rad/Rstar)*np.log(10)
-	return d
-
-def log_sersic(rad,A,Rstar,N):
-	e = A - np.log(10)*((rad/Rstar)**(1./N))
-	return e
-
-def calc_coords_obs(coordinates, view_phi, view_theta):
-	view_theta *= np.pi/180.e0
-	view_phi *= np.pi/180.e0
-
-	coords_obs = np.zeros([len(coordinates),2])
-	coords_obs[:,0] = (coordinates[:,0] * np.sin(view_phi) + 
-							coordinates[:,1]*np.cos(view_phi))
-	coords_obs[:,1] = ( (coordinates[:,0] * np.cos(view_phi) - 
-							coordinates[:,1]*np.sin(view_phi)) * np.cos(view_theta) +
-							coordinates[:,2] * np.sin(view_theta) )
-	return coords_obs
-
-def calc_vel_obs(velocities, view_phi, view_theta):
-	view_theta *= np.pi/180.e0
-	view_phi *= np.pi/180.e0
-
-	vel_LOS = velocities[:,0]*np.cos(view_phi) * np.abs(np.sin(view_theta)) +\
-				velocities[:,1] * -1.e0*np.sin(view_phi) * np.abs(np.sin(view_theta)) +\
-				velocities[:,2] * np.cos(view_theta)								
-	return vel_LOS
-
-def calc_spatial_dist(coordinates, masses, Rmax):
-	dim = 200
-	image = np.zeros([dim,dim])
-	dx = 2*Rmax/dim
-	spacebins = np.arange(-1*Rmax,Rmax+dx,dx)
-	area = dx*dx*1.e6
-	for xx in range(len(spacebins)-1):
-		xx_low = spacebins[xx]
-		xx_high = spacebins[xx+1]
-		for yy in range(len(spacebins)-1):
-			yy_low = spacebins[yy]
-			yy_high = spacebins[yy+1]
-
-			image[yy,xx] = np.log10(np.nansum(masses[(coordinates[:,0] >= xx_low) & (coordinates[:,0]<xx_high) &\
-									(coordinates[:,1]>=yy_low) & (coordinates[:,1]<yy_high)])/area)
-
-	return spacebins[0:-1] + dx, image
-
-def calc_sigma(coordinates, masses, Rmax = None, Zmax = None):
-
-	z = coordinates[:,2]
-	coordinates = calc_coords_obs(coordinates, 0, 0)
-	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
-
-	if Rmax != None:
-		if Zmax != None:
-			coordinates = coordinates[(radii < Rmax) & (z < Zmax)]
-			masses = masses[(radii < Rmax) & (z < Zmax)]
-		else:
-			coordinates = coordinates[radii < Rmax]
-			masses = masses[radii < Rmax]
-	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
-	radii_argsort = np.argsort(radii)
-	radii = radii[radii_argsort]
-	masses = masses[radii_argsort]
-
-	Npart = len(masses)
-	Nbins = 20
-	rad_points = np.zeros(Nbins)
-	sigma = np.zeros(Nbins)
-
-	for ii in range(Nbins):
-		low = (ii) * int(Npart / (Nbins))
-		high = (ii + 1) * int(Npart / (Nbins))
-		inbin_radii = radii[low:high]
-		inbin_masses = masses[low:high]
-
-		minrad = np.min(inbin_radii)
-		maxrad = np.max(inbin_radii)
-		area = np.pi * (maxrad * maxrad - minrad * minrad) * 1.e6
-		sigma[ii] = np.log10(np.nansum(inbin_masses)/area)
-		rad_points[ii] = np.median(inbin_radii)
-
-	return rad_points, sigma
-
-def calc_RC(coordinates, velocities, Rmax=None, Zmax=None):
-
-	z = coordinates[:,2]
-	coordinates = calc_coords_obs(coordinates, 0, 0)
-	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
-	
-	if Rmax != None:
-		if Zmax != None:
-			coordinates = coordinates[(radii < Rmax) & (z < Zmax)]
-			velocities = velocities[(radii < Rmax) & (z < Zmax)]
-		else:
-			coordinates = coordinates[radii < Rmax]
-			velocities = velocities[radii < Rmax]
-	vcirc = np.sqrt(velocities[:,0]**2.e0 + velocities[:,1]**2.e0)
-	radii = np.sqrt(np.nansum(coordinates**2.e0, axis=1))
-	radii_argsort = np.argsort(radii)
-	radii = radii[radii_argsort]
-	vcirc = vcirc[radii_argsort]
-
-	Npart = len(coordinates)
-	Nbins = 20
-	rad_points = np.zeros(Nbins)
-	rot_cur = np.zeros(Nbins)
-
-	for ii in range(Nbins):
-		low = (ii) * int(Npart / (Nbins))
-		high = (ii + 1) * int(Npart / (Nbins))
-		inbin_radii = radii[low:high]
-		inbin_vcirc = vcirc[low:high]
-
-		rot_cur[ii] = np.median(inbin_vcirc)
-		rad_points[ii] = np.median(inbin_radii)
-
-	return rad_points,rot_cur
-
-def calc_Pextk_densityenergy(gas_densities, gas_internal_energy, lenunit ='kpc'):
-	unitmass = 1.989e43						#1.e10 Msun in g
-	if lenunit == 'kpc':
-		unitlen = 3.086e21					#1 kpc in cm
-	elif lenunit == 'mpc':
-		unitlen = 3.086e24					#1 Mpc in cm
-	unitvel = 1.e5							#1 km/s in cm/s
-	kB = 1.381e-16							#Boltzmann constant
-	gamma = 5./3.							#Adiabatic constant
-	gas_densities *= unitmass / (unitlen ** 3.)
-	gas_internal_energy *= unitvel * unitvel
-	Pextk = (gamma - 1.) * gas_densities * gas_internal_energy / kB
-
-	return Pextk
-
-def calc_Pextk_midpressure(stars_coordinates, stars_masses, gas_coordinates, gas_neutral_masses):#,gas_zvel):
-	
-	hstar = hstar_from_radfit(stars_coordinates, stars_masses, 40)
-
-	dim = 100
-	imgphys = 80.		#kpc
-	dx = imgphys/dim
-	pixarea = dx*dx*1.e6	#pc^2
-	spacebins = np.arange(-0.5*imgphys, 0.5*imgphys + dx, dx)
-	Pextk = np.zeros(len(gas_neutral_masses))
-	for xx in range(len(spacebins)-1):
-		xx_low = spacebins[xx]
-		xx_high = spacebins[xx+1]
-		for yy in range(len(spacebins)-1):
-			yy_low = spacebins[yy]
-			yy_high = spacebins[yy+1]
-
-			inspace_gas = np.where((gas_coordinates[:,0] >= xx_low) & (gas_coordinates[:,0]<xx_high) &\
-									(gas_coordinates[:,1]>=yy_low) & (gas_coordinates[:,1]<yy_high) &\
-									(np.abs(gas_coordinates[:,2] < 1*hstar/1.e3)))[0]
-
-			if len(inspace_gas) != 0:
-				sigma_gas = np.nansum(gas_neutral_masses[inspace_gas]) * 1.36 / pixarea
-				Zdisp_gas = 7
-
-				inspace_stars = np.where((stars_coordinates[:,0] >= xx_low) & (stars_coordinates[:,0]<xx_high) &\
-									(stars_coordinates[:,1]>=yy_low) & (stars_coordinates[:,1]<yy_high) &\
-									(np.abs(stars_coordinates[:,2] < 1*hstar/1.e3)))[0]
-
-				if len(inspace_stars) != 0:
-					sigma_stars = np.nansum(stars_masses[inspace_stars]) / pixarea
-					Pextk[inspace_gas] = 272.e0*sigma_gas*(sigma_stars**0.5)*Zdisp_gas*(hstar**-0.5)
-	Pextk[np.abs(gas_coordinates[:,2]) > 1*hstar/1.e3] = 0
-
-	return Pextk
-
-def calc_fH2_LGS(gas, unitmass, a, h):
-	
-	Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
-	Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
-
-
-	[masses, densities, Z, Habundance, temperature, SFR] = \
-					particle_info(a, h, gas, unitmass, ['Mass','Density','Metallicity','ElementAbundance/Hydrogen'\
-														,'Temperature','StarFormationRate'],cgs=True)
-	
-	Z = Z/0.0127
-	fH2 = np.zeros(len(masses))
-	neut_frac = np.zeros(len(masses))
-	redshift = 1./a - 1.
-	Hmass = masses*Habundance
-
-	for i in range(len(masses)): 
-		neut_frac[i], fH2[i] = Find_H2_LGS.find_fH2(densities[i], Hmass[i], masses[i], Z[i], SFR[i], temperature[i], Hm2012_data, Rahmati2013, redshift)
-
-	return neut_frac, fH2
-
-def calc_HI_H2_ARHS(gas, unitmass, a, h):
-
-	# Hm2012_data = Find_H2_LGS.Read_PhotoIo_Table('Hm2012.txt')
-	# Rahmati2013 = Find_H2_LGS.Read_BestFit_Params('BF_Params_Rahmati2013.txt')
-
-
-	[masses, densities, Z, Habundance, temperature, U, SFR] = \
-					particle_info(a, h, gas, unitmass, ['Mass','Density','Metallicity','ElementAbundance/Hydrogen'\
-														,'Temperature','InternalEnergy','StarFormationRate'],cgs=True)
-	masses =  masses / 1.989e33	
-	SFR = SFR * (3600*24*365.25) / 1.989e33
-	Z = Z
-	densities = densities * (3.086e18*3.086e18*3.086e18) / 1.989e33
-	U = U/(1.e4)
-	redshift = 1./a - 1.
-
-
-	HI_masses, H2_masses, neutral_masses = galcalc_ARHS.HI_H2_masses(masses,SFR,Z,densities,temperature,None,redshift)
-	return HI_masses,H2_masses,neutral_masses
-
-def calc_Rmol(Pextk, coeff = 'LR08'):
-
-	if coeff == 'BR06':
-		div = 4.3e4
-		power = 0.92
-	elif coeff == 'LR08':
-		div = 10.**4.23
-		power = 0.8
-
-	Rmol = (Pextk / div)**power
-	return Rmol
 
 def compare_pressures_spatial(filename,gas_coordinates, Pextk_MP, Pextk_part,neutral_masses):
 
@@ -2381,150 +2900,88 @@ def compare_pressures_spatial(filename,gas_coordinates, Pextk_MP, Pextk_part,neu
 	low_ax.set_ylabel('z [kpc]')
 
 	plt.show()
-	exit()
 
-def calc_spectrum(coords_obs, gas_vel_LOS, HI_masses, Vres = 5, beamsize = 30):
-	
-	radii = np.sqrt(np.nansum(coords_obs**2.e0, axis=1))
-	inbeam = np.where(radii <= beamsize)
-	gas_vel_LOS = gas_vel_LOS[inbeam]
-	HI_masses = HI_masses[inbeam]
+def COM_COP_offset(Rvir,filename,DM_coordinates, DM_masses, stars_coordinates, stars_masses, gas_coordinates, gas_masses,HI_masses,save=False):
+	COM_gas = calc_COM(gas_coordinates, gas_masses, Rmax = Rvir)
+	COM_HI = calc_COM(gas_coordinates, HI_masses, Rmax = Rvir)
+	COM_stars = calc_COM(stars_coordinates, stars_masses, Rmax = Rvir)
+	COM_DM = calc_COM(DM_coordinates, DM_masses, Rmax = Rvir)
 
-	vlim = 300.e0
-	vel_bins = np.arange(-vlim,vlim + Vres,Vres)
-	vel_points = vel_bins[0:-1] + 0.5 * Vres
-	spectrum = np.zeros([len(vel_bins) - 1])
+	COM_offset_gas = np.sqrt(np.nansum((np.array([0,0,0])- COM_gas)**2.e0))/Rvir
+	COM_offset_HI = np.sqrt(np.nansum((np.array([0,0,0])- COM_HI)**2.e0))/Rvir
+	COM_offset_stars = np.sqrt(np.nansum((np.array([0,0,0]) - COM_stars)**2.e0))/Rvir
+	COM_offset_DM = np.sqrt(np.nansum((np.array([0,0,0]) - COM_DM)**2.e0))/Rvir
 
-	dist=50
-	mjy_conv = 1.e3 / (2.356e5  * (dist ** 2.e0))
+	COM_gas_disk = calc_COM(gas_coordinates, gas_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COM_HI_disk = calc_COM(gas_coordinates, HI_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COM_stars_disk = calc_COM(stars_coordinates, stars_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COM_DM_disk = calc_COM(DM_coordinates, DM_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
 
-	for vv in range(len(vel_bins) - 1):
-		vel_low = vel_bins[vv]
-		vel_high = vel_bins[vv + 1]
-		invel  = np.where( (gas_vel_LOS + 30 >= vel_low) &
-				 			(gas_vel_LOS - 30 < vel_high) )[0]
-				
-		for part in invel:
-			Mfrac = gaussian_CDF(vel_high, gas_vel_LOS[part], 7.e0) - \
-					gaussian_CDF(vel_low, gas_vel_LOS[part], 7.e0)
-			spectrum[vv] += HI_masses[part] * Mfrac * mjy_conv
-	return vel_points, spectrum
+	COM_offset_gas_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_gas_disk)**2.e0))/Rvir
+	COM_offset_HI_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_HI_disk)**2.e0))/Rvir
+	COM_offset_stars_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_stars_disk)**2.e0))/Rvir
+	COM_offset_DM_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COM_DM_disk)**2.e0))/Rvir
 
-def locate_peaks(spectrum):
+	fig, ax = plt.subplots()
+	ax.set_ylim([0,0.2])
+	ax.scatter([0,1,2,3],[COM_offset_gas,COM_offset_HI,COM_offset_DM, COM_offset_stars],color='Blue',label = 'Within Rvir')
+	ax.scatter([0,1,2,3],[COM_offset_gas_disk,COM_offset_HI_disk,COM_offset_DM_disk, COM_offset_stars_disk],color='Red',label = 'Within disk')
+	ax.set_xticks([0,1,2,3])
+	ax.set_xticklabels(['Gas','HI','DM','Stars'],fontsize=12)
+	ax.set_ylabel('Offset from COP / Rvir',fontsize=12)
+	ax.set_title('EAGLE ID = {name}, Rvir = {Rvir:.2f}'.format(name=filename.split('ID')[-1].split('.')[0],Rvir=Rvir),fontsize=12)
+	ax.legend(fontsize=12)
+	if save == True:
+		outname = './figures/COM_offsets_EAGLE{name}.png'.format(name=filename.split('ID')[-1].split('.')[0])
+		fig.savefig(outname, dpi=150)
+	else:
+		plt.show()
+		plt.close()
 
-	PeakL = 0
-	PeaklocL = int(len(spectrum)/2.)
-	chan=1
-	while(chan< len(spectrum)/2 + 5):
-		chan+=1
-		grad = (spectrum[chan] - spectrum[chan-1]) * (spectrum[chan+1] - spectrum[chan])
-		if grad<0 and spectrum[chan]>PeakL:
-			PeaklocL = chan
-			PeakL = spectrum[chan]
+def COV_Per_offset(Rvir,filename,DM_coordinates,DM_velocities, DM_masses, stars_coordinates,stars_velocities, \
+	stars_masses, gas_coordinates, gas_velocities, gas_masses, HI_masses, save=False):
+	COV_gas = calc_COV(gas_coordinates, gas_velocities, gas_masses, Rmax = Rvir)
+	COV_HI = calc_COV(gas_coordinates, gas_velocities, HI_masses, Rmax = Rvir)
+	COV_stars = calc_COV(stars_coordinates, stars_velocities, stars_masses, Rmax = Rvir)
+	COV_DM = calc_COV(DM_coordinates, DM_velocities, DM_masses, Rmax = Rvir)
 
-	PeakR = 0
-	PeaklocR = int(len(spectrum)/2.)
-	chan = len(spectrum)-1
-	while(chan > len(spectrum)/2 - 5 ):
-		chan-=1
-		grad = (spectrum[chan] - spectrum[chan+1]) * (spectrum[chan-1] - spectrum[chan])
-		if grad<0 and spectrum[chan]>PeakR:
-			PeaklocR = chan
-			PeakR = spectrum[chan]
+	COV_offset_gas = np.sqrt(np.nansum((np.array([0,0,0])- COV_gas)**2.e0))
+	COV_offset_HI = np.sqrt(np.nansum((np.array([0,0,0])- COV_HI)**2.e0))
+	COV_offset_stars = np.sqrt(np.nansum((np.array([0,0,0]) - COV_stars)**2.e0))
+	COV_offset_DM = np.sqrt(np.nansum((np.array([0,0,0]) - COV_DM)**2.e0))
 
-	return PeaklocL,PeaklocR
+	COV_gas_disk = calc_COV(gas_coordinates, gas_velocities, gas_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COV_HI_disk = calc_COV(gas_coordinates, gas_velocities, HI_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COV_stars_disk = calc_COV(stars_coordinates, stars_velocities, stars_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
+	COV_DM_disk = calc_COV(DM_coordinates, DM_velocities, DM_masses, Rmax = 0.2*Rvir,Zmax = 0.1*Rvir)
 
-def locate_width(spectrum, peaks, level):
-	"""
-	Locate the N% level of the peak on the left and right side of a spectrum
+	COV_offset_gas_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_gas_disk)**2.e0))
+	COV_offset_HI_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_HI_disk)**2.e0))
+	COV_offset_stars_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_stars_disk)**2.e0))
+	COV_offset_DM_disk = np.sqrt(np.nansum((np.array([0,0,0]) - COV_DM_disk)**2.e0))
 
-	Parameters
-	----------
-	spectrum : array
-		Input spectrum
-	peaks : list
-		Value of each peak
-	level : float
-		N% of the peaks to measure
+	fig, ax = plt.subplots()
+	# ax.set_ylim([0,0.2])
+	ax.scatter([0,1,2,3],[COV_offset_gas,COV_offset_HI,COV_offset_DM, COV_offset_stars],color='Blue',label = 'Within Rvir')
+	ax.scatter([0,1,2,3],[COV_offset_gas_disk,COV_offset_HI_disk,COV_offset_DM_disk, COV_offset_stars_disk],color='Red',label = 'Within disk')
+	ax.set_xticks([0,1,2,3])
+	ax.set_xticklabels(['Gas','HI','DM','Stars'],fontsize=12)
+	ax.set_ylabel('Offset from Peculiar velocity [km/s]',fontsize=12)
+	ax.set_title('EAGLE ID = {name}, Rvir = {Rvir:.2f}'.format(name=filename.split('ID')[-1].split('.')[0],Rvir=Rvir),fontsize=12)
+	ax.legend(fontsize=12)
+	if save == True:
+		outname = './figures/COV_offsets_EAGLE{name}.png'.format(name=filename.split('ID')[-1].split('.')[0])
+		fig.savefig(outname, dpi=150)
+	else:
+		plt.show()
+		plt.close()
 
-	Returns
-	-------
-	Wloc : list
-		Location of N% of each peak in channels
-	"""
 
-	# channels = range(len(spectrum))	
-	SpeakL = peaks[0]
-	SpeakR = peaks[1]
-	wL = -1
-	wR = -1
-	chan = 0
-	while(chan < len(spectrum)-1 and spectrum[chan] < level * SpeakL):
-		chan += 1
-		wL = chan - 1 + ((level * SpeakL - spectrum[chan - 1]) / (
-			spectrum[chan] - spectrum[chan - 1])) 
 
-	chan = len(spectrum) - 2
-	while(chan > 0 and spectrum[chan] < level * SpeakR):
-		chan -= 1
-		wR = chan + 1 + -1.e0 * ((level * SpeakR - spectrum[chan + 1]) / (
-			spectrum[chan] - spectrum[chan + 1])) 
 
-	Wloc = [wL,wR]
-	return Wloc
+##### other stuff
 
-def areal_asymmetry(spectrum, limits, Vres):
-	"""
-	Measure the asymmetry parameter and integrated flux of a spectrum between limits
 
-	Parameters
-	----------
-	spectrum : array
-		Input spectrum to measure
-	limits : list
-		Lower and upper channels to measure between
-	Vres : float
-		Velocity resolution
-
-	Returns
-	-------
-	Sint : float
-		Integrated flux in units of input spectrum * Vres
-	Afr : float
-		Asymmetry parameter
-	"""
-
-	minchan = limits[0]
-	maxchan = limits[1]
-	midchan = 0.5e0 * (minchan + maxchan)
-	min_val = np.interp(minchan,[np.floor(minchan),np.ceil(minchan)],
-			[spectrum[int(np.floor(minchan))],spectrum[int(np.ceil(minchan))]])
-	max_val = np.interp(maxchan,[np.floor(maxchan),np.ceil(maxchan)],
-			[spectrum[int(np.floor(maxchan))],spectrum[int(np.ceil(maxchan))]])
-	mid_val = np.interp(midchan,[np.floor(midchan),np.ceil(midchan)],
-			[spectrum[int(np.floor(midchan))],spectrum[int(np.ceil(midchan))]])
-
-	Sedge_L = min_val * (np.ceil(minchan) - minchan)
-	Sedge_R = max_val * (maxchan - np.floor(maxchan))
-	Smid_L = mid_val * (midchan - np.floor(midchan))
-	Smid_R = mid_val * (np.ceil(midchan) - midchan )
-
-	S_L = spectrum[int(np.ceil(minchan)):int(np.floor(midchan) + 1)]
-	# S_L = S_L[S_L > 0]
-	S_L = np.nansum(S_L)
-	S_R = spectrum[int(np.ceil(midchan)):int(np.floor(maxchan) + 1)]
-	# S_R = S_R[S_R > 0]
-	S_R = np.nansum(S_R)
-
-	Sint_L = (Sedge_L + S_L + Smid_L) * Vres
-	Sint_R = (Sedge_R + S_R + Smid_R) * Vres
-	Sint = Sint_L + Sint_R
-
-	Afr =  Sint_L / Sint_R 
-	if Afr < 1.e0:
-		Afr = 1.e0 / Afr
-
-	return Sint, Afr	
 
 def size_mass_relation(MHI):
 	DHI = 10.e0**(0.506*np.log10(MHI)-3.293)	#kpc Wang+16
@@ -2537,137 +2994,58 @@ def median_absolute_deviation(data, scale=True):
 		MAD *= 1.4826
 	return MAD
 
+def create_gif(basedir):
+	import glob
+	import imageio
+	files = glob.glob('{dir}/figures/snaps*.png'.format(dir=basedir))
+	files = np.array(files)
+	# print(files)
+	nums = np.zeros(len(files))
+	for ii in range(len(files)):
+		nums[ii] = int('{}'.format(files[ii].split('snaps')[-1].split('.png')[0]))
+	files = files[np.argsort(nums)]
+	# print(files)
 
-def create_datacube(tt, filename, incl, gas_coordinates, gas_velocities, gas_masses):
+	images = []
+	for file in files:
+		print(file)
+		images.append(imageio.imread(file))
+	imageio.mimsave('{dir}/figures/gif.gif'.format(dir=basedir),images,duration = 0.005*len(files))
 
-	gas_coords_obs = calc_coords_obs(gas_coordinates, 0, incl)
-	vel_LOS = calc_vel_obs(gas_velocities, 0 , incl)
+def map_asymmetry_viewangle(tt, coordinates, velocities, HI_masses, save = None):
 
+	if save == 'view':
+		plt.imshow(tt,extent = [0,360,180,0])
+		plt.colorbar()
+		plt.show()
+	else:
+		phi_range = np.arange(0, 360, 5)
+		theta_range = np.arccos(2. * np.arange(0, 1, 0.02) - 1.) * 180./np.pi
 
-	cubephys = 100 		#kpc
-	cubedim = 250
-	dx = cubephys / cubedim
-	print('Datacube spatial resolution:', dx *1000 , 'pc')
-	spacebins = np.arange(-0.5*cubephys, 0.5*cubephys + dx, dx)
-	dv = 5.e0
-	print('Datacube velocity resolution:',dv, 'km/s')
-	vlim = 300.e0
-	vel_bins = np.arange(-vlim, vlim + dv, dv)
-	dist = 50.
-	mjy_conv = 1.e3 / (2.356e5  * (dist ** 2.e0))
-	datacube = np.zeros([cubedim, cubedim, len(vel_bins)-1])
+		Afr_grid = np.zeros([len(theta_range), len(phi_range)])
 
-	for yy in range(cubedim):
-		ylow = spacebins[yy]
-		yhigh = spacebins[yy + 1]
-		for xx in range(cubedim):
-			xlow = spacebins[xx]
-			xhigh = spacebins[xx + 1]
-			vel_LOS_inspace = vel_LOS[(gas_coords_obs[:,0] >= xlow) & (gas_coords_obs[:,0] < xhigh) & \
-						(gas_coords_obs[:,1] >= ylow) & (gas_coords_obs[:,1] < yhigh)]
-			
-			for vv in range(len(vel_bins) - 1):
-				vel_low = vel_bins[vv]
-				vel_high = vel_bins[vv + 1]
-				invel  = np.where( (vel_LOS_inspace + 30 >= vel_low) &
-						 			(vel_LOS_inspace - 30 < vel_high) )[0]
-				for part in invel:
-					Mfrac = gaussian_CDF(vel_high, vel_LOS_inspace[part], 7.e0) - \
-							gaussian_CDF(vel_low, vel_LOS_inspace[part], 7.e0)
-					datacube[yy,xx,vv] += gas_masses[part] * Mfrac * mjy_conv
+		for th in range(len(theta_range)):
+			for ph in range(len(phi_range)):
 
-	datacube = datacube.reshape((cubedim,cubedim*(len(vel_bins)-1)))
-	savedir = '{dir}/data/datacube_{tt}_incl{incl}.dat'.format(dir = filename.split('/snaps/')[0], tt = tt, incl = incl)
-	header = 'dist = {dist}\n cubephys = {cubephys}\n dx = {dx}\n vlim = {vlim}\n dv = {dv}\n'.format(
-		dist = dist, cubephys = cubephys, dx = dx, dv = dv,vlim = vlim)
-	np.savetxt(savedir, datacube, header = header,fmt = "%.6e")
+				phi = phi_range[ph]
+				theta = theta_range[th]
+				# print(phi, theta)
 
-	# return datacube
+				coords_obs = calc_coords_obs(coordinates, phi, theta)
+				vel_LOS = calc_vel_obs(velocities, phi, theta)
 
-def read_datacube(tt, dir):
+				vel, spectrum = calc_spectrum(coords_obs, vel_LOS, HI_masses)
+				PeaklocL, PeaklocR = locate_peaks(spectrum)
+				widths = locate_width(spectrum, [spectrum[PeaklocL],spectrum[PeaklocR]], 0.2)
+				Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+				Afr_grid[th,ph] = Afr
 
-	filename1 = '{dir}data/datacube_{tt}_incl90.dat'.format(dir=dir, tt=str(tt))
-	# filename2 = '{dir}data/datcube_{tt}_incl90.dat'.format(dir=basedir, tt=str(tt).zfill(3))
-
-	f = open(filename1, 'r')
-	for line in f:
-		if 'dist' in line:
-			dist = float(line.split(' ')[-1]) 
-			print(dist)
-		if 'cube' in line:
-			cubephys = float(line.split(' ')[-1]) 
-			print(cubephys)
-		if 'dx' in line:
-			dx = float(line.split(' ')[-1]) 
-			print(dx)
-		if 'vlim' in line:
-			vlim = float(line.split(' ')[-1]) 
-			print(vlim)
-		if 'dv' in line:
-			dv = float(line.split(' ')[-1]) 
-			print(dv)
-	f.close()
-
-	mjy_conv = 1.e3 / (2.356e5  * (dist ** 2.e0))
-	cubedim = int(cubephys/dx)
-	cubespec = int(2*vlim  / dv)
-
-	spacebins = np.arange(-0.5*cubephys + 0.5*dx , 0.5*cubephys + 0.5*dx, dx)
-	velbins = np.arange(-vlim + 0.5*dv, vlim + 0.5*dv, dv)
-
-	datacube = np.loadtxt(filename1).reshape((cubedim,cubedim,cubespec))
-
-	return spacebins,velbins, datacube, mjy_conv
-
-def plot_datacube(tt, basedir, spacebins, velbins, datacube, mjy_conv):
-
-	dx = np.abs(np.diff(spacebins)[0])
-	print(int(1.2/dx))
-	dv = np.abs(np.diff(velbins)[0])
-	levels = [-1, np.log10(0.3), 0,np.log10(3), 1]
-
-	fig = plt.figure(figsize=(15,8))
-	gs = gridspec.GridSpec(1,2) 
-	mom0_ax = fig.add_subplot(gs[0,0])
-	spec_ax = fig.add_subplot(gs[0,1])
-	mom0_ax.set_xlabel('x [kpc]',fontsize=20)
-	mom0_ax.set_ylabel('y [kpc]',fontsize=20)
-	spec_ax.set_xlabel('Velocity',fontsize=20)
-	spec_ax.set_ylabel('Spectral flux',fontsize=20)
-	spec_ax.set_ylim([0,40])
-	spec_ax.tick_params(axis = 'both', which='both', direction = 'in', labelsize=20, length = 8, width = 1.25)
-	mom0_ax.tick_params(axis = 'both', which='both', direction = 'in', labelsize=20, length = 8, width = 1.25)
-
-
-	spectrum = np.nansum(datacube,axis=(0,1)) 
-
-	colors = ['Blue','Orange','Green','Red','Magenta']
-
-	mom0_map = np.nansum(datacube,axis=2)* dv / (mjy_conv * dx * dx * 1.e6)		#Msun /pc^2
-	mom0_map = convolve(mom0_map,Gaussian2DKernel(int(0.8/dx)))
-	mom0_map = np.log10(mom0_map)
-
-	mom0_ax.imshow(mom0_map, extent=[spacebins[0],spacebins[-1],spacebins[0],spacebins[-1]],
-					 vmin=-1,vmax=np.log10(12),cmap='Greys')
-	mom0_ax.contour(spacebins, spacebins, mom0_map, levels = levels, colors=colors, alpha=0.7)
-
-	# mom0_map = np.log10(np.nansum(datacube,axis=2)* dv / (mjy_conv * dx * dx * 1.e6))		#Msun /pc^2
-
-	for ii in range(len(levels)):
-		lev= levels[ii]
-		mask = np.where(mom0_map < lev)
-		datacube[mask[0],mask[1],:] = np.nan
-		spectrum = np.nansum(datacube,axis=(0,1)) 
-		spec_ax.plot(velbins, spectrum, color=colors[ii],
-				label = 'Min $\Sigma_{{HI}}$ = {lev:.2f}'.format(lev=10**lev))
-	plt.legend()
-	
-	savedir = '{dir}/figures/mom0_spec_{tt}_i90.png'.format(dir=basedir, tt=str(tt).zfill(3))
-
-	fig.savefig(savedir, dpi=150)
-	# plt.legend()
-	# plt.show()
-
+		if save != None:
+			filename = '{dir}/data/snaps{tt}_Afr_viewgrid.dat'.format(dir=save, tt=str(tt).zfill(3))
+			np.savetxt(filename, Afr_grid)
+		else:
+			plt.imshow(Afr_grid)
+			plt.show()
 
 
 
@@ -2690,4 +3068,15 @@ if __name__ == '__main__':
 
 	# resolution_test()
 
-	resolution_test_EAGLE()
+	# resolution_test_EAGLE()
+
+	# resolution_test_TNG()
+
+	# read_Genesis()
+
+	# read_controlled_run()
+
+	# HI_datacube_simulation()
+
+	fourier_decomp_datacube()
+
