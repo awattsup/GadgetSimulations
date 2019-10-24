@@ -22,38 +22,121 @@ def fourier_decomp_datacube():
 	sys.path.append('../../fourier-decomposition')
 	import fourier_decomposition as fd
 
-	spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/data/datacube_test.dat')
-	
-	# velfield = np.nanmean(datacube,axis = 2)
-	# plt.imshow(velfield)
-	# plt.show()
+	# spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/datacube_test_incl60.dat')
+	spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/Genesis/data/datacube_incl60.dat')
+	# spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/IllustrisTNG/data/datacube_incl60.dat')
+	# spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/EAGLE_galaxies/data/datacube_ID8253667_incl60.dat')
 
-	# plt.imshow(np.log10(np.nansum(datacube,axis=2)/mjy_conversion(params['dist'],params['Vres']) / (np.abs(np.diff(spacebins)[0]) * 1.e3) **2.e0) )
-	# plt.show()
+	dx = np.abs(np.diff(spacebins)[0])
+
+	mom0  = np.nansum(datacube/mjy_conversion(params['dist'], params['Vres']), axis=2) /  (( dx * 1.e3) ** 2.e0)
+	bad_sens = np.where(mom0 < 0.1)
+
+
+	velcube = np.zeros([len(spacebins)-1,len(spacebins)-1,len(velbins)-1])
+	for ii in range(len(velbins)-1):
+		velcube[:,:,ii] = velbins[ii] + 0.5e0 * np.abs(np.diff(velbins))[0]
+
+	mom1 = np.nansum(datacube * velcube, axis = 2) / np.nansum(datacube, axis=2)
+
+	mom0[bad_sens] = np.nan 
+	mom1[bad_sens] = np.nan
+
+	plt.imshow(mom1)
+	plt.show()
+	# exit()
+
+
+	# centre = np.where(mom0 == np.nanmax(mom0))
+	# print(centre[0][0],centre[1][0])
+
+
+	ellipse_params0, harmonic_coeffs_mom0 = fd.harmonic_decomposition(mom0, moment = 0,radii = 'linear', PAQ = [0,0.5], centre = [0.5*len(mom0),0.5*len(mom0)], image = True)
+	ellipse_params1, harmonic_coeffs_mom1 = fd.harmonic_decomposition(mom1, moment = 1,radii = 'linear', PAQ = [0,0.5],
+											Vsys = False, centre = [0.5*len(mom0),0.5*len(mom0)], image = True)
+
+	mom0 = np.log10(mom0)
+	fd.plot_radial_asym_measures(ellipse_params0, ellipse_params1, 
+		harmonic_coeffs_mom0, harmonic_coeffs_mom1, mom0, mom1, dx)
 
 
 ### datacube and spectra creation /saving
 
 
-def HI_datacube_simulation():
+def HI_datacube_spectrum_simulation():
+
+	incl = 60
+
+	# filename = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/snaps/snapshot_000.hdf5'
+	# gas_coordinates, gas_velocities, HI_masses = read_controlled_run(filename)
+	# outname_dcb = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/datacube_incl{incl}.dat'.format(incl=incl)
+	# outname_spec = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/spectrum_incl{incl}.dat'.format(incl=incl)
+
+	# gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
+	# gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
+
+	# vel,spec = create_HI_spectrum(gas_coordinates_obs, gas_vel_obs, HI_masses, FWHM = [200,200])
+	# plt.plot(vel,spec)
+
+	# vel,spec = create_HI_spectrum(gas_coordinates_obs, gas_vel_obs, HI_masses, FWHM = [100,100])
+	# plt.plot(vel,spec)
+
+	# vel,spec = create_HI_spectrum(gas_coordinates_obs, gas_vel_obs, HI_masses, FWHM = [50,50])
+	# plt.plot(vel,spec)
+	# plt.show()
+	# exit()
 
 
-	filename = '/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/snaps/snapshot_000.hdf5'
+	# create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
+	# create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
 
-	gas_coordinates, gas_velocities, HI_masses = read_controlled_run(filename)
+	# filename = '/media/data/simulations/EAGLE_galaxies/EAGLE_galaxyID8253667.hdf5'
+	# gas_coordinates, gas_velocities, HI_masses = read_EAGLE(filename)
+	# outname_dcb = '/media/data/simulations/EAGLE_galaxies/data/datacube_ID8253667_incl{incl}.dat'.format(incl = incl)
+	# outname_spec = '/media/data/simulations/EAGLE_galaxies/data/spectrum_ID8253667_incl{incl}.dat'.format(incl = incl)
 
-	gas_coordinates_faceon = calc_coords_obs(gas_coordinates, 0, 0)
-	gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 90)
+	# gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
+	# gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
 
-	outname = '/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/data/datacube_test.dat'
 
-	create_HI_datacube(gas_coordinates_faceon,gas_vel_edgeon,HI_masses, filename=outname)
+	# create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
+	# create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
 
+	# filename = '/media/data/simulations/IllustrisTNG/TNG_556247'
+	# gas_coordinates, gas_velocities, HI_masses = read_TNG(filename)
+	# outname_dcb = '/media/data/simulations/IllustrisTNG/data/datacube_incl{incl}.dat'.format(incl=incl)
+	# outname_spec = '/media/data/simulations/IllustrisTNG/data/spectrum_incl{incl}.dat'.format(incl=incl)
+
+	# gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
+	# gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
+
+
+	# create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
+	# create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
+
+	filename = '/media/data/simulations/Genesis/snapshot_199.hdf5'
+	gas_coordinates, gas_velocities, HI_masses = read_Genesis(filename)
+	outname_dcb = '/media/data/simulations/Genesis/data/datacube_incl{incl}.dat'.format(incl=incl)
+	outname_spec = '/media/data/simulations/Genesis/data/spectrum_incl{incl}.dat'.format(incl=incl)
+
+
+	gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0, incl)
+	gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
+
+	bins, image = calc_spatial_dist(gas_coordinates_obs,HI_masses,50)
+	plt.imshow(image)
+	plt.show()
+	# exit()
+
+
+
+	create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename = outname_dcb)
+	create_HI_spectrum(gas_coordinates_obs, gas_vel_obs, HI_masses, filename = outname_spec)
 
 
 #### simulation reading###
 
-def read_TNGsnap(base):
+def read_TNG(base):
 
 	f = open(base + '_stars.txt')
 	names = f.readline().split(', ')
@@ -79,73 +162,29 @@ def read_TNGsnap(base):
 	H2mass_K13 = gas[:,14]
 
 
-	COM_gas = calc_COM(gas_coordinates, gas_masses)
+	COM_gas = calc_COM(gas_coordinates, gas_neutral_masses, Rmax=10)
 	COM_stars = calc_COM(stars_coordinates, stars_masses)
 	gas_coordinates -= COM_gas
 	stars_coordinates -= COM_stars
 
-	gas_eigvec = orientation_matrix(gas_coordinates, gas_masses)
+	gas_eigvec = orientation_matrix(gas_coordinates, gas_neutral_masses)
+	# gas_eigvec = diagonalise_inertia(gas_coordinates, gas_neutral_masses,10)
 	gas_coordinates = gas_coordinates @ gas_eigvec
 	stars_coordinates = stars_coordinates @ gas_eigvec
+
+	# plt.scatter(gas_coordinates[:,0],gas_coordinates[:,2],s=0.1)
+	# plt.show()
+	# exit()
 
 	gas_velocities = gas_velocities @ gas_eigvec
 
 
 	return gas_coordinates, gas_velocities, HImass_K13
 
-	# plt.scatter(gas_coordinates[:,0],gas_coordinates[:,1],s=0.05)
-	# plt.show()
-
-
-	# gas_radii =  np.sqrt(np.nansum(gas_coordinates**2.e0, axis=1))
-
-	# gas_coords_faceon = calc_coords_obs(gas_coordinates, 180, 0)
-	# gas_coords_edgeon = calc_coords_obs(gas_coordinates, 180, 90)
-	# gas_vel_edgeon = calc_vel_obs(gas_velocities, 180 , 90)
-
-	# spectrum_spatial_contribution(gas_coordinates, gas_velocities, HImass_K13)
-
-
-	# # gas_Pextk = calc_Pextk_midpressure(stars_coordinates, stars_masses, gas_coordinates, gas_neutral_masses)
-	# # Rmol = calc_Rmol(gas_Pextk)
-	# # HI_masses = gas_neutral_masses / (1.e0 + Rmol)
-	# # H2_masses = gas_neutral_masses - HI_masses
-
-	# # HImass_list = [HI_masses, HImass_GK11, HImass_K13, HImass_GD14]
-
-	# # compare_radialSigma(gas_coordinates, HImass_list,['BR06','GK11','K13','GD14'],40)
-
-	# # compare_spectra(gas_coords_edgeon, gas_vel_edgeon, HImass_list, ['BR06','GK11','K13','GD14'])
-
-	# # map_asymmetry_viewangle(gas_coordinates,gas_velocities,HI_masses)
-
-	# print(np.nanmax(HI_masses),np.nanmin(HI_masses))
-	# print('total HI mass',np.nansum(HI_masses),'fraction=',np.nansum(HI_masses)/np.nansum(stars_masses))
-	# print('total H2 mass',np.nansum(H2_masses),'fraction=',np.nansum(H2_masses)/np.nansum(stars_masses))
-
-	# gas_coords_edgeon = calc_coords_obs(gas_coordinates, 0, 17)
-	# gas_vel_edgeon = calc_vel_obs(gas_velocities, 0, 17)
-
-	# vel, spectrum = calc_spectrum(gas_coords_edgeon, gas_vel_edgeon, HI_masses)
-	# PeaklocL, PeaklocR = locate_peaks(spectrum)
-	# widths = locate_width(spectrum, [spectrum[PeaklocL],spectrum[PeaklocR]], 0.2)
-	# Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-
-	# plt.plot(vel, spectrum)
-	# plt.plot([vel[PeaklocL],vel[PeaklocL]],[0,20])
-	# plt.plot([vel[PeaklocR],vel[PeaklocR]],[0,20])
-	# plt.show()
-	# print(PeaklocL, PeaklocR)
-	# print(widths)
-	# print(Afr)
-
-
-	# plot_spatial_radial_spectrum(0, Rvir, gas_coordinates, gas_velocities, HI_masses, H2_masses)
-
 def read_EAGLE(filename):
 
 	unitmass = 1.e10
-	catalogue = Table.read('/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/EAGLE_galaxies/EAGLE_cat.ascii', format='ascii')
+	catalogue = Table.read('/media/data/simulations/EAGLE_galaxies/EAGLE_cat.ascii', format='ascii')
 	ID = int(filename.split('ID')[-1].split('.')[0])
 	catref = np.where(np.array(catalogue['GalaxyID']) == ID)[0]
 
@@ -243,6 +282,11 @@ def read_EAGLE(filename):
 		stars_coordinates -= COM_stars
 		COM_stars_tot -= COM_stars
 
+		# plt.scatter(stars_coordinates[:,0],stars_coordinates[:,2],s=0.1)
+		# plt.scatter(gas_coordinates[:,0],gas_coordinates[:,2],s=0.1)
+		# plt.show()
+		# exit()
+
 		HI_masses, H2_masses, gas_neutral_masses = calc_HI_H2_ARHS(gas,unitmass,a,h)
 		HI_masses = HI_masses[gas_radii <= Rvir/1.e3]
 		H2_masses = H2_masses[gas_radii <=Rvir/1.e3]
@@ -253,7 +297,7 @@ def read_EAGLE(filename):
 
 	return gas_coordinates, gas_velocities, HI_masses
 
-def read_Genesis():
+def read_Genesis(filename):
 	unitmass = 1.e10
 	Rvir = 0.2697
 
@@ -263,7 +307,6 @@ def read_Genesis():
 	COM_offset = np.array([13.3016, 34.7614, 40.9740])
 	COV_offset = np.array([-34.6948,  6.1456, -95.8170])
 
-	filename = '/media/data/simulations/Genesis/snapshot_199.hdf5'
 	file = h5py.File(filename, 'r')
 
 	parttypes = list(file.keys())
@@ -310,15 +353,26 @@ def read_Genesis():
 	DM_coordinates = (DM_coordinates - COM) * 1.e3
 	stars_coordinates = (stars_coordinates - COM) * 1.e3
 	gas_coordinates = (gas_coordinates - COM) * 1.e3
+	gas_velocities -= COV
 
-	COM_gas = calc_COM(gas_coordinates, gas_masses)
+	COM_gas = calc_COM(gas_coordinates, gas_neutral_masses,Rmax = 100)
 	COM_stars = calc_COM(stars_coordinates, stars_masses)
 	gas_coordinates -= COM_gas
 	stars_coordinates -= COM_stars
 
-	gas_eigvec = orientation_matrix(gas_coordinates, gas_masses)
+	# plt.scatter(gas_coordinates[:,0],gas_coordinates[:,2],s=0.1)
+	# plt.show()
+
+	# gas_eigvec = diagonalise_inertia(gas_coordinates, gas_neutral_masses, 20)
+
+	gas_eigvec = orientation_matrix(gas_coordinates, gas_neutral_masses)
 	gas_coordinates = gas_coordinates @ gas_eigvec
 	stars_coordinates = stars_coordinates @ gas_eigvec
+
+	# plt.scatter(gas_coordinates[:,0],gas_coordinates[:,2],s=0.1)
+	# plt.show()
+	# exit()
+
 
 	gas_velocities = gas_velocities @ gas_eigvec
 
@@ -332,13 +386,9 @@ def read_Genesis():
 					gas_masses, gas_SFR, gas_Z, gas_density_unit, 
 					gas_internal_energy_unit, gas_neutral_fraction, 0, mode='u')
 
-		
-	rad,sig = calc_sigma(gas_coordinates,HI_masses,Rmax = 50)
-	plt.plot(rad,sig)
-	plt.show()
-	exit()
+	radii = np.sqrt(np.nansum(gas_coordinates**2.e0,axis=1))
 
-	return gas_coordinates, gas_velocities, HI_masses
+	return gas_coordinates[radii<50], gas_velocities[radii<50], HI_masses[radii<50]
 
 def read_controlled_run(filename):
 	# filename = '/media/data/simulations/isolated_models/fstar1/BT0/GF10_fB0_fhalo0/snaps/snapshot_030.hdf5'
@@ -380,7 +430,9 @@ def read_controlled_run(filename):
 	DM_coordinates -= COM_DM
 	stars_coordinates -= COM_DM
 	disk_coordinates -= COM_DM
-	gas_coordinates -= COM_DM
+	gas_coordinates -= COM_DM - calc_COM(gas_coordinates,gas_masses)
+
+
 
 	gas_SFR = np.zeros(len(gas_masses))
 	gas_Z = np.zeros(len(gas_masses)) + 0.001
@@ -756,73 +808,75 @@ def resolution_test_TNG():
 	ID = 556247
 
 	# snaplist = [0, 25, 50, 75]
-	plot = False
+	plot = True
 
 	# basedir = '/media/data/simulations/IllustrisTNG/'
-	basedir = '/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/IllustrisTNG/'
+	basedir = '/media/data/simulations/IllustrisTNG/'
 
 
 	if plot:
 
-		for ID in gals:
+	
 
-			phi_list = [0,45,90]
-			theta_list = [90,50,20]
-			Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
-			Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
-			Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
-			
+		phi_list = [0,45,90]
+		theta_list = [90,50,20]
+		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+		Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+		
 
-			Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
-			for proc in range(Nproc):
-				file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
-				data = np.loadtxt(file)
-				data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
-				Afr_list += data
+		Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
+		for proc in range(Nproc):
+			file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
+			data = np.loadtxt(file)
+			data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
+			Afr_list += data
 
-			for nn in range(len(Npart_list)):
-				for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
-						Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
-
-			Afrfig = plt.figure(figsize=(16,8))
-			Afr_gs = gridspec.GridSpec(3,1) 
-			Afr_ax1 = Afrfig.add_subplot(Afr_gs[0,0])
-			Afr_ax2 = Afrfig.add_subplot(Afr_gs[1,0], sharex = Afr_ax1)
-			Afr_ax3 = Afrfig.add_subplot(Afr_gs[2,0], sharex = Afr_ax1)
-			Afr_ax1.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
-			Afr_ax2.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
-			Afr_ax3.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
-			Afr_ax3.set_xlabel('Number of particles',fontsize = 15)
-			Afr_ax1.set_xscale('log')
-			Afr_ax2.set_xscale('log')
-			Afr_ax3.set_xscale('log')
-			Afr_ax3.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
-			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
-			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
-
-			axes = [Afr_ax1, Afr_ax2, Afr_ax3]
-
-			ls = ['-','--',':']
-
-
+		for nn in range(len(Npart_list)):
 			for pp in range(len(phi_list)):
-					for tt in range(len(theta_list)):
-						axes[tt].errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
-							yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1], ls = ls[tt], color='C{}'.format(pp))
+				for tt in range(len(theta_list)):
+					Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
+					Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
+
+		print(Afr_med_errs[:,:,1])
+
+		Afrfig = plt.figure(figsize=(14,10))
+		Afr_gs = gridspec.GridSpec(3,1) 
+		Afr_ax1 = Afrfig.add_subplot(Afr_gs[0,0])
+		Afr_ax2 = Afrfig.add_subplot(Afr_gs[1,0], sharex = Afr_ax1,sharey = Afr_ax1)
+		Afr_ax3 = Afrfig.add_subplot(Afr_gs[2,0], sharex = Afr_ax1,sharey = Afr_ax1)
+		Afr_ax1.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+		Afr_ax2.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+		Afr_ax3.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+		Afr_ax3.set_xlabel('Number of particles',fontsize = 15)
+		Afr_ax1.set_xscale('log')
+		Afr_ax2.set_xscale('log')
+		Afr_ax3.set_xscale('log')
+		Afr_ax3.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+		Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+		Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+		axes = [Afr_ax1, Afr_ax2, Afr_ax3]
+
+		ls = ['-','--',':']
 
 
-			leg = [Line2D([0],[0],ls='-',color='Black'),
-					Line2D([0],[0],ls='--',color='Black'),
-					Line2D([0],[0],ls=':',color='Black'),
-					Line2D([0],[0],ls='-',color='C0'),
-					Line2D([0],[0],ls='-',color='C1'),
-					Line2D([0],[0],ls='-',color='C2')]				
-			Afr_ax1.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
-			# plt.show()
-			Afr_figname = '{basedir}/figures/TNG_{ID}_Afr_Npart.png'.format(basedir=basedir,ID=ID)
-			Afrfig.savefig(Afr_figname, dpi=200)
+		for pp in range(len(phi_list)):
+				for tt in range(len(theta_list)):
+					axes[tt].errorbar(Npart_list, Afr_med_errs[:,pp*len(phi_list)+tt,0],
+						yerr = Afr_med_errs[:,pp*len(phi_list)+tt,1],capsize=4, ls = ls[tt], color='C{}'.format(pp))
+
+
+		leg = [Line2D([0],[0],ls='-',color='Black'),
+				Line2D([0],[0],ls='--',color='Black'),
+				Line2D([0],[0],ls=':',color='Black'),
+				Line2D([0],[0],ls='-',color='C0'),
+				Line2D([0],[0],ls='-',color='C1'),
+				Line2D([0],[0],ls='-',color='C2')]				
+		Afr_ax1.legend(leg,['i = 90', 'i = 50', 'i = 20','$\phi$ = 0','$\phi$ = 45','$\phi$ = 90'])
+		# plt.show()
+		Afr_figname = '{basedir}/figures/TNG_{ID}_Afr_Npart.png'.format(basedir=basedir,ID=ID)
+		Afrfig.savefig(Afr_figname, dpi=200)
 
 	else:
 	
@@ -2372,6 +2426,16 @@ def gaussian_CDF(x,mu,sigma):
 	prob = 0.5e0 * (1.e0 + erf( (x - mu) / (np.sqrt(2.e0) * sigma) ))
 	return prob
 
+def gaussian_beam_response(coordinates, centre = [0,0], FWHM = [30,30]):
+	xcoords = coordinates[:,0] - centre[0]
+	ycoords = coordinates[:,1] - centre[1]
+
+	sigma_x = FWHM[0]/2.355
+	sigma_y = FWHM[1]/2.355
+
+	response = np.exp( -1.e0 * ((xcoords*xcoords / (2 * sigma_x*sigma_x)) + (ycoords*ycoords / (2 * sigma_y*sigma_y))) )
+	return response
+
 def plot_datacube(tt, basedir, spacebins, velbins, datacube, mjy_conv):
 
 	dx = np.abs(np.diff(spacebins)[0])
@@ -2421,14 +2485,37 @@ def plot_datacube(tt, basedir, spacebins, velbins, datacube, mjy_conv):
 	# plt.legend()
 	# plt.show()
 
+def create_HI_spectrum(coordinates, velocities, HI_masses, Vres = 5, centre = [0,0], FWHM = [100,100], filename = None):
+	
+	HImasses_weighted = HI_masses * gaussian_beam_response(coordinates, centre = centre, FWHM = FWHM)
 
+	vlim = 300.e0
+	vel_bins = np.arange(-vlim,vlim + Vres,Vres)
+	vel_points = vel_bins[0:-1] + 0.5 * Vres
+	spectrum = np.zeros([len(vel_bins) - 1])
+
+	for vv in range(len(vel_bins) - 1):
+		vel_low = vel_bins[vv]
+		vel_high = vel_bins[vv + 1]
+		invel  = np.where( (velocities + 30 >= vel_low) &
+				 			(velocities - 30 < vel_high) )[0]
+				
+		for part in invel:
+			Mfrac = gaussian_CDF(vel_high, velocities[part], 7.e0) - \
+					gaussian_CDF(vel_low, velocities[part], 7.e0)
+			spectrum[vv] += HImasses_weighted[part] * Mfrac 
+	if filename != None:
+		data = np.array([vel_points,spectrum]).T
+		np.savetxt(filename,data, fmt = "%.6e")
+	else:
+		return vel_points, spectrum
 
 def create_HI_datacube(coordinates, velocities, HI_masses, params = None, filename = None):
 
 	if params ==  None:							#default datacube parameters
 		params = {'dist':50,					#Mpc
 				'cubephys':100,					#kpc (left to right)
-				'cubedim':500,					#pixels 
+				'cubedim':250,					#pixels 
 				'Vlim':600,						#km/s bandwidth
 				'Vres':5,						#km/s
 				'B_FWHM':1,						#kpc
@@ -2441,7 +2528,7 @@ def create_HI_datacube(coordinates, velocities, HI_masses, params = None, filena
 	velbins = np.arange(-0.5e0 * params['Vlim'], 0.5e0 * params['Vlim'] + params['Vres'], params['Vres'])
 	Nspace = len(spacebins) - 1
 	Nvel = len(velbins) - 1
-	datacube = np.zeros([len(spacebins) - 1, len(spacebins) - 1, len(velbins) - 1])	
+	datacube = np.zeros([Nspace, Nspace, Nvel])	
 
 	for yy in range(Nspace):
 		ylow = spacebins[yy]
@@ -2455,9 +2542,9 @@ def create_HI_datacube(coordinates, velocities, HI_masses, params = None, filena
 			if len(vel_inspace) > 0:
 				minvel = np.nanmin(vel_inspace) - 30
 				maxvel = np.nanmax(vel_inspace) + 30
-				velrange_min = np.where(np.abs(velbins - minvel) ==  np.min(np.abs(velbins - minvel)))[0][0] - 1
-				velrange_max = np.where(np.abs(velbins - maxvel) ==  np.min(np.abs(velbins - maxvel)))[0][0] + 1
-				for vv in range(velrange_min, velrange_max):
+				velrange_min = np.where(np.abs(velbins - minvel) ==  np.min(np.abs(velbins - minvel)))[0][0] - 10
+				velrange_max = np.where(np.abs(velbins - maxvel) ==  np.min(np.abs(velbins - maxvel)))[0][0] + 10
+				for vv in range(np.max([0,velrange_min]), np.min([velrange_max,Nvel])):
 					vel_low = velbins[vv]
 					vel_high = velbins[vv + 1]
 					invel  = np.where( (vel_inspace + 30 >= vel_low) &
@@ -2468,17 +2555,18 @@ def create_HI_datacube(coordinates, velocities, HI_masses, params = None, filena
 
 						datacube[yy,xx,vv] += HI_masses[part] * Mfrac * mjy_conv
 
-	Bsigma = params['B_FWHM'] / 2.355														#convert beam FWHM to Gausian stddev for convoluion
+	datacube[:,:,:] += nprand.normal(np.zeros([Nspace, Nspace , Nvel]), params['rms'])				#add noise
 
+	Bsigma = params['B_FWHM'] / (2.355 * dx)														#convert beam FWHM to Gausian stddev for convoluion
+	# print(Bsigma)
 	for vv in range(Nvel):
-		datacube[:,:,vv]  = convolve(datacube[:,:,vv], Gaussian2DKernel(int(Bsigma / dx)))
+		datacube[:,:,vv]  = convolve(datacube[:,:,vv], Gaussian2DKernel(Bsigma))
 
-	datacube[:,:,:] += nprand.normal(np.zeros([Nspace, Nspace, Nvel]), params['rms'])		#add noise
 
 	if filename == None:
 		return spacebins, velbins, datacube
 	else:
-		datacube = datacube.reshape((Nspace * Nspace * Nvel))
+		datacube = datacube.reshape((Nspace , Nspace * Nvel))
 		header = 'dist = {dist}\n cubephys = {cubephys}\n dx = {dx}\n Vlim = {Vlim}\n Vres = {Vres}\n'.format(
 			dist = params['dist'], cubephys = params['cubephys'], dx = dx, Vres = params['Vres'], Vlim = params['Vlim'])
 		np.savetxt(filename, datacube, header = header,fmt = "%.6e")
@@ -2503,7 +2591,6 @@ def read_datacube(filename):
 	velbins = np.arange(-0.5e0 * params['Vlim'], 0.5e0 * params['Vlim'] + params['Vres'], params['Vres'])
 	Nspace = len(spacebins) - 1
 	Nvel = len(velbins) - 1
-
 
 	print('reading datacube')
 	datacube = np.loadtxt(filename).reshape((Nspace, Nspace, Nvel))
@@ -3076,7 +3163,7 @@ if __name__ == '__main__':
 
 	# read_controlled_run()
 
-	# HI_datacube_simulation()
+	# HI_datacube_spectrum_simulation()
 
 	fourier_decomp_datacube()
 

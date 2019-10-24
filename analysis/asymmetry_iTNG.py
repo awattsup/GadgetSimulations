@@ -25,8 +25,8 @@ def remeasure_Afr():
 		data['Afr'][ii] = Afr
 	data.write('/media/data/simulations/IllustrisTNG/TNG_galdata_measured_v2_new.ascii',format='ascii',overwrite=True)
 
-def fix_measurements():
-	base = '/media/data/simulations/IllustrisTNG/TNG100-2'
+def fix_measurements(IDs,base):
+	# base = '/media/data/simulations/IllustrisTNG/TNG100'
 
 	data = Table.read('{}_galdata_measured_v2.ascii'.format(base),format='ascii')
 	spectra = np.loadtxt('{}_spectra_true.dat'.format(base))
@@ -39,7 +39,7 @@ def fix_measurements():
 
 	print(len(good))
 	print(len(bad))
-	exit()
+	# exit()
 
 
 	# widths = (data['w20R'] - data['w20L']) * Vres
@@ -73,7 +73,8 @@ def fix_measurements():
 
 	# IDs = bad[bad<210] #210
 	# IDs = [1239,1295,1489,1511,2102,2206,2487,2654,2839,2973,3085,3679,3737,3738,3909,4207,4210,4943,5335,5669,5973,7013,7378,9636,10230,10767,10798,10830]
-	IDs = [91,242,288,674,987,1205,1453,1696,1802,2168,2213,4234,4420,4676,4941,5340,5534,5576,5638]
+	# IDs = [91,242,288,674,987,1205,1453,1696,1802,2168,2213,4234,4420,4676,4941,5340,5534,5576,5638]
+	# IDs = [5243,5347,5802,6040,6208]
 	print(len(IDs))
 
 	for ii in IDs:
@@ -82,13 +83,16 @@ def fix_measurements():
 		level = 0.2
 		answer = -1
 		while(answer != '' and answer != 'b'):
-			peaks = locate_peaks_v2(spectrum,level)
+			if answer != 'm':
+				peaks = locate_peaks_v2(spectrum,level)
+			else:
+				peaks = locate_peaks_manual(spectrum,left,right)
 			plt.plot(spectrum)
 			plt.plot([peaks[0],peaks[0]],[0,np.nanmax(spectrum)])
 			plt.plot([peaks[1],peaks[1]],[0,np.nanmax(spectrum)])
 			plt.ion()
 			plt.show()
-			print('[enter] for good, [b] for bad or [p] to retry peak finding')
+			print('[enter] for good, [b] for bad or [p] to retry peak finding, [pp] for single peak, [m] for manual select')
 			answer = input()
 			print(answer)
 			if answer == '':
@@ -111,11 +115,68 @@ def fix_measurements():
 			if answer == 'pp':
 				print('inputting to fit one peak')
 				level = 0.999
+			if answer =='m':
+				print('Choose left and right positions to start from')
+				while True:
+					pts = []
+					while len(pts) < 2:
+						pts.append(plt.ginput(1, timeout=-1))
+						print(pts)
+					if plt.waitforbuttonpress():
+						break
+				left = pts[0][0][0]
+				right = pts[1][0][0]
+				print(left)
+				print(right)
 			elif answer == 'p':
 				print('input fraction of peak to try')
 				level = float(input())
 			plt.close()
 		data.write('{}_galdata_measured_v2.ascii'.format(base),format='ascii',overwrite=True)
+
+def find_bad_peaks():
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	IDs = np.arange(len(TNG100))
+	# IDs = IDs[TNG100['fit_success']==0]
+	good = np.where(TNG100['fit_success']==0)[0]
+	TNG100 = TNG100[good]
+
+	spectra = np.loadtxt('/media/data/simulations/IllustrisTNG/TNG100_spectra_true.dat')
+	vel = spectra[:,0]
+	spectra = spectra[:,1::]
+	spectra = spectra[:,good]
+	IDlist = []
+	for ii in range(len(TNG100)):
+		spectrum = spectra[:,ii]
+		PeaklocL = int(TNG100['PeaklocL'][ii])
+		PeaklocR = int(TNG100['PeaklocR'][ii])
+		w20L = int(TNG100['w20L'][ii])
+		w20R = int(TNG100['w20R'][ii])
+
+		if PeaklocL == PeaklocR:
+			if any(spectrum[0:w20L] > spectrum[PeaklocL]*0.5) or  any(spectrum[w20R:-1] > spectrum[PeaklocL]*0.5):
+				IDlist.extend([ii])
+				# plt.plot(spectrum)
+				# plt.show()
+
+		else:
+			if any(spectrum[PeaklocL-10:PeaklocL+10] > spectrum[PeaklocL]) or any(spectrum[PeaklocR-10:PeaklocR+10] > spectrum[PeaklocR]):
+				IDlist.extend([ii])
+				# plt.plot(spectrum)
+				# plt.show()
+	print(IDlist)
+	print(len(IDlist))
+	# print(np.where(np.array(IDlist) > 2600))
+	# IDlist = IDlist[393::]
+	# exit()
+
+
+	base = '/media/data/simulations/IllustrisTNG/TNG100'
+	fix_measurements(IDlist, base)
+
+
+
 
 def plot_Afr_env():
 
@@ -213,6 +274,7 @@ def resolution_completeness_sSFR():
 	particle_mass = 1.4e6
 
 	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	data = data[data['fit_success'] == 0]
 
 	data['mass_stars'] = np.log10(data['mass_stars'])
 	data['SFR'] = np.log10(data['SFR']) - data['mass_stars']
@@ -658,11 +720,12 @@ def compare_asymmetry_halomass():
 	massrange_1 = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11))[0]
 	massrange_2 = np.where((TNG100['mass_stars'] > 11) & (TNG100['mass_stars'] <= 11.5))[0]
 
-	print('number of galaxies',len(massrange_2) + len(massrange_1))
-	# exit()
-
+	
+	print('Ncen', len(TNG100[(TNG100['mass_stars'] > 10.) & (TNG100['mass_stars'] < 11.5) & (TNG100['Type'] < 1)] ))
+	print('Nsat', len(TNG100[(TNG100['mass_stars'] > 10.) & (TNG100['mass_stars'] < 11.5) & (TNG100['Type']  == 1)]))
 
 	fig = plt.figure(figsize = (10,8))
+
 	gs = gridspec.GridSpec(2, 1, top = 0.95, right = 0.98, bottom  = 0.12, left = 0.08)
 
 	ax1 = fig.add_subplot(gs[0,0])
@@ -712,8 +775,119 @@ def compare_asymmetry_halomass():
 	exit()
 
 
+def check_highmass_SFgals():
+	particle_mass = 1.4e6
 
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	IDs = np.arange(len(TNG100))
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['SFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+	# plt.scatter(data['mass_stars'],data['SFR'],s=0.1)
+	# plt.show()
+	# exit()
+
+	highmassSF = np.where((TNG100['mass_stars']>11.5) & (TNG100['SFR'] > -11.5))[0]
+	data = TNG100[highmassSF]
+	IDs = IDs[highmassSF]
+
+	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
+	unresolved_asym = np.where((data['Sint']/particle_mass < 1.e3))[0]
+
+	print(IDs[unresolved_asym])
+
+
+	spectra = np.loadtxt('/media/data/simulations/IllustrisTNG/TNG100_spectra_true.dat')
+	vel = spectra[:,0]
+	spectra = spectra[:,1::]
+	for ID in IDs:
+		print(ID,TNG100['Afr'][ID])
+		fig, ax = plt.subplots()
+		ax.plot(range(len(vel)),spectra[:,ID],color='Black')
+		ax.plot([TNG100['PeaklocL'][ID],TNG100['PeaklocL'][ID]],[0,np.max(spectra[:,ID])],color = 'red')
+		ax.plot([TNG100['PeaklocR'][ID],TNG100['PeaklocR'][ID]],[0,np.max(spectra[:,ID])],color = 'red')
+		ax.plot([TNG100['w20L'][ID],TNG100['w20L'][ID]],[0,np.max(spectra[:,ID])],color='Blue',ls='--')
+		ax.plot([TNG100['w20R'][ID],TNG100['w20R'][ID]],[0,np.max(spectra[:,ID])],color='Blue',ls='--')
+		ax.set_xlabel('Channels')
+		ax.set_ylabel('HI mass')
+		ax.text(0.1,0.9,'Afr = {afr:.3f}'.format(afr=TNG100['Afr'][ID]),fontsize=12, transform=ax.transAxes)
+		plt.show()
+
+
+	exit()
+
+	print(len(resolved_asym))
+	print(len(unresolved_asym))
+
+	mstar_bins = np.arange(9,13,0.1)
+	SFR_bins = np.arange(-15,-8,0.1)
+	compl_grid = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
+	for mm in range(len(mstar_bins)-1):
+		mbin_low = mstar_bins[mm]
+		mbin_high = mstar_bins[mm + 1]
+		inbin_mm = np.where((data['mass_stars'] > mbin_low) & (data['mass_stars'] < mbin_high))[0]
+		inbin_mm_res = np.where((data['mass_stars'][resolved_asym] > mbin_low) & (data['mass_stars'][resolved_asym] < mbin_high))[0]
+		for ss in range(len(SFR_bins)-1):
+			sbin_low = SFR_bins[ss]
+			sbin_high = SFR_bins[ss + 1]
+			inbin_ss = np.where((data['SFR'] > sbin_low) & (data['SFR'] < sbin_high))[0]
+			inbin_ss_res = np.where((data['SFR'][resolved_asym] > sbin_low) & (data['SFR'][resolved_asym] < sbin_high))[0]
+
+			inbin = np.intersect1d(inbin_ss,inbin_mm)
+			inbin_res = np.intersect1d(inbin_ss_res,inbin_mm_res)
+			if len(inbin) == 0:
+				compl_grid[ss,mm] = np.nan
+
+			else:
+				compl_grid[ss,mm] = len(inbin_res) / len(inbin)
+
+
+
+def plot_selected_spectra():
 	
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
+	TNG100['SFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+	IDs = np.arange(len(TNG100))
+	good = np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]
+	TNG100_good = TNG100[good]
+	IDs = IDs[good]
+	# massrange_1 = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11))[0]
+	massrange = np.where((TNG100_good['mass_stars'] > 10.5) & (TNG100_good['mass_stars'] <= 11) & (TNG100_good['mass_halo'] < 13.5))[0]
+
+	TNG_samp = TNG100_good[massrange]
+	IDs = IDs[massrange]
+
+	highAfr = np.where(TNG_samp['Afr']>1.7)[0]
+	IDs = IDs[highAfr]
+	print(IDs)
+	# exit()
+
+	spectra = np.loadtxt('/media/data/simulations/IllustrisTNG/TNG100_spectra_true.dat')
+	vel = spectra[:,0]
+	spectra = spectra[:,1::]
+	for ID in IDs:
+		spectrum = spectra[:,ID]
+		print(ID,TNG100['Afr'][ID])
+		fig, ax = plt.subplots()
+		ax.plot(range(len(vel)),spectrum,color='Black')
+		ax.plot([TNG100['PeaklocL'][ID],TNG100['PeaklocL'][ID]],[0,np.max(spectrum)],color = 'red')
+		ax.plot([TNG100['PeaklocR'][ID],TNG100['PeaklocR'][ID]],[0,np.max(spectrum)],color = 'red')
+		ax.plot([TNG100['w20L'][ID],TNG100['w20L'][ID]],[0,np.max(spectrum)],color='Blue',ls='--')
+		ax.plot([TNG100['w20R'][ID],TNG100['w20R'][ID]],[0,np.max(spectrum)],color='Blue',ls='--')
+		ax.set_xlabel('Channels')
+		ax.set_ylabel('HI mass')
+		ax.text(0.1,0.9,'Afr = {afr:.3f}'.format(afr=TNG100['Afr'][ID]),fontsize=12, transform=ax.transAxes)
+		plt.show()
+
+	exit()
+
+
 
 
 	
@@ -891,6 +1065,35 @@ def locate_peaks_v2(spectrum, level):
 
 	return [PeaklocL, PeaklocR]
 
+def locate_peaks_manual(spectrum, chanL, chanR):
+
+	chanR = int(chanR)
+	#now iterate back up to find the first turning point
+	grad = 1
+	while(chanR > 1 and grad > 0):
+		chanR -= 1
+		grad = (spectrum[chanR] - spectrum[chanR - 1]) * (spectrum[chanR + 1] - spectrum[chanR])
+		
+	if grad < 0 and chanR != 1:
+		PeaklocR = chanR
+	else:
+		PeaklocR = -1
+
+	chanL = int(chanL)
+
+	grad = 1
+	while(chanL < len(spectrum)-2 and grad > 0):
+		chanL += 1
+		grad = (spectrum[chanL] - spectrum[chanL - 1]) * (spectrum[chanL + 1] - spectrum[chanL])
+
+	if grad < 0 and chanL != len(spectrum) - 1:
+		PeaklocL = chanL
+	else:
+		PeaklocL = -1
+
+	return [PeaklocL, PeaklocR]
+
+
 def locate_width(spectrum, peaklocs, level):
 	"""
 	Locate the N% level of the peak on the left and right side of a spectrum
@@ -992,14 +1195,18 @@ def areal_asymmetry(spectrum, limits, Vres):
 if __name__ == '__main__':
 	# measure_TNG_spectra()
 	# plot_Afr_env()
-	# fix_measurements()
+	# fix_measurements(0,0)
 	# remeasure_Afr()
 	# resolution_completeness_sSFR()
 	# resolution_completeness_MHI()
 	# resolution_completeness_ratio()
 	# compare_Afrhist_TNGboxes()
-	compare_asymmetry_halomass()
+	# compare_asymmetry_halomass()
 
+	# plot_selected_spectra()
+	# check_highmass_SFgals()
+
+	find_bad_peaks()
 
 
 
