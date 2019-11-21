@@ -2,9 +2,64 @@ import numpy as np
 import analysis_functions as af 
 import matplotlib.pyplot as plt 
 import matplotlib.gridspec as gridspec
-# import galread_ARHS as gr 
+import galread_ARHS as gr 
 from astropy.table import Table
 from mpi4py import MPI
+
+
+def add_extended_measurements():
+
+	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+
+
+	data_new = gr.TNG_HIlines('/media/data/simulations/IllustrisTNG/HIlines_ARHS_TNG100_extended.bin',mainbox=True,extended=True)
+
+
+	keys_new = ['pos_rel','vel_rel']
+	coords = ['_x','_y','_z']
+
+	print(data)
+
+	for ii in range(len(keys_new)):
+		for jj in range(len(coords)):
+			data['{key}{coord}'.format(key=keys_new[ii],coord=coords[jj])] = np.array(data_new[keys_new[ii]])[:,jj]
+
+	print(data)
+	# exit()
+	data.write('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii',overwrite=True)
+
+def split_TNGdata():
+	data = gr.TNG_HIlines('/media/data/simulations/IllustrisTNG/HIlines_ARHS_TNG100-3.bin',mainbox=False)
+	vel_bins = (data['vbins'] + np.diff(data['vbins'])[0])[0:-1]
+	spectra_true = data['HIline_true']
+	# spectra_mock = data['HIline_mock']
+
+	spectra_true = np.append([vel_bins],spectra_true,axis=0)
+	# spectra_mock = np.append([vel_bins],spectra_mock,axis=0)
+	spectra_true = np.transpose(spectra_true)
+	# spectra_mock = np.transpose(spectra_mock)
+
+
+
+
+
+	keys_mock = ['subhaloes', 'groupnr','mass_stars', 'mass_stars_mock', 'mass_HI', 'mass_HI_mock', 
+	'mass_halo', 'mass_halo_mock', 'SFR', 'SFR_mock',  'Type', 'Type_mock']
+
+	keys = ['subhaloes', 'groupnr','mass_stars' , 'mass_HI', 
+	'mass_halo', 'SFR',  'Type']
+
+	# for key in keys
+
+	galdata = [data[k] for k in keys]
+	galdata = np.transpose(np.array(galdata))
+
+	galdata = Table(galdata, names=keys)
+	galdata.write('/media/data/simulations/IllustrisTNG/TNG100-3_galdata.ascii',format='ascii')
+	# np.savetxt('/media/data/simulations/IllustrisTNG/TNG100-2_spectra_mock.dat',spectra_mock)
+	np.savetxt('/media/data/simulations/IllustrisTNG/TNG100-3_spectra_true.dat',spectra_true)
+	print(galdata)
+
 
 
 def remeasure_Afr():
@@ -175,7 +230,47 @@ def find_bad_peaks():
 	base = '/media/data/simulations/IllustrisTNG/TNG100'
 	fix_measurements(IDlist, base)
 
+def measure_TNG_spectra():
+	comm = MPI.COMM_WORLD
+	rank = comm.Get_rank()
+	nproc = comm.Get_size()
 
+	base = '/media/data/simulations/IllustrisTNG/TNG100-3'
+
+	spectra = np.loadtxt('{}_spectra_true.dat'.format(base))
+	vel_bins = spectra[:,0]
+	spectra = spectra[:,1::]
+	Vres = np.diff(vel_bins)[0]
+	Nspectra = len(spectra[0,:])
+
+	measurements = []
+	for specnum in range(rank, Nspectra, nproc):
+		print(specnum)
+		spectrum =  spectra[:,specnum]
+		measurement = measure_spectrum_v2(spectrum, Vres)
+		measurements.append([specnum] + measurement)
+
+	measurements = np.array(measurements)
+	comm.barrier()
+	if rank == 0:
+		measurements_all = np.empty([int(np.ceil(Nspectra/nproc)*nproc),8], dtype='d')
+	else:
+		measurements_all = None
+	comm.Gather(measurements, measurements_all, root = 0)
+	if rank == 0:
+		measurements_all = measurements_all[0:Nspectra,:]
+		sort = np.argsort(measurements_all[:,0])
+		measurements_all = measurements_all[sort]
+		data = Table.read('{}_galdata.ascii'.format(base),format='ascii')
+		data['fit_success'] = measurements_all[:,1]
+		data['PeaklocL'] = measurements_all[:,2]
+		data['PeaklocR'] = measurements_all[:,3]
+		data['w20L'] = measurements_all[:,4]
+		data['w20r'] = measurements_all[:,5]
+		data['Sint'] = measurements[:,6]
+		data['Afr'] = measurements_all[:,7]
+
+		data.write('{}_galdata_measured.ascii'.format(base),format='ascii')
 
 
 def plot_Afr_env():
@@ -227,47 +322,6 @@ def plot_Afr_env():
 	plt.show()
 	exit()
 
-def measure_TNG_spectra():
-	comm = MPI.COMM_WORLD
-	rank = comm.Get_rank()
-	nproc = comm.Get_size()
-
-	base = '/media/data/simulations/IllustrisTNG/TNG100-3'
-
-	spectra = np.loadtxt('{}_spectra_true.dat'.format(base))
-	vel_bins = spectra[:,0]
-	spectra = spectra[:,1::]
-	Vres = np.diff(vel_bins)[0]
-	Nspectra = len(spectra[0,:])
-
-	measurements = []
-	for specnum in range(rank, Nspectra, nproc):
-		print(specnum)
-		spectrum =  spectra[:,specnum]
-		measurement = measure_spectrum_v2(spectrum, Vres)
-		measurements.append([specnum] + measurement)
-
-	measurements = np.array(measurements)
-	comm.barrier()
-	if rank == 0:
-		measurements_all = np.empty([int(np.ceil(Nspectra/nproc)*nproc),8], dtype='d')
-	else:
-		measurements_all = None
-	comm.Gather(measurements, measurements_all, root = 0)
-	if rank == 0:
-		measurements_all = measurements_all[0:Nspectra,:]
-		sort = np.argsort(measurements_all[:,0])
-		measurements_all = measurements_all[sort]
-		data = Table.read('{}_galdata.ascii'.format(base),format='ascii')
-		data['fit_success'] = measurements_all[:,1]
-		data['PeaklocL'] = measurements_all[:,2]
-		data['PeaklocR'] = measurements_all[:,3]
-		data['w20L'] = measurements_all[:,4]
-		data['w20r'] = measurements_all[:,5]
-		data['Sint'] = measurements[:,6]
-		data['Afr'] = measurements_all[:,7]
-
-		data.write('{}_galdata_measured.ascii'.format(base),format='ascii')
 
 def resolution_completeness_sSFR():
 
@@ -450,10 +504,6 @@ def resolution_completeness_MHI():
 
 	ax2.set_ylim([0,1])
 	plt.show()
-
-
-
-
 
 def resolution_completeness_ratio():
 
@@ -774,6 +824,51 @@ def compare_asymmetry_halomass():
 	plt.show()
 	exit()
 
+def compare_Afrhist_Npart():
+	particle_mass = 1.4e6
+
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
+	TNG100['SFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+
+	TNG100 = TNG100[TNG100['mass_stars']>10.5]
+	
+	fig = plt.figure(figsize = (10,12))
+
+	gs = gridspec.GridSpec(5, 1, top = 0.92, right = 0.98, bottom  = 0.08, left = 0.08)
+
+	ax1 = fig.add_subplot(gs[0,0])
+	ax2 = fig.add_subplot(gs[1,0],sharex = ax1,sharey = ax1)
+	ax3 = fig.add_subplot(gs[2,0],sharex = ax1,sharey = ax1)
+	ax4 = fig.add_subplot(gs[3,0],sharex = ax1,sharey = ax1)
+	ax5 = fig.add_subplot(gs[4,0],sharex = ax1,sharey = ax1)
+
+	Npart_list = [100,500,1000,2500,5000]
+	ax = [ax1,ax2,ax3,ax4,ax5]
+
+	for ii in range(len(Npart_list)):
+		axes = ax[ii]
+		samp = TNG100[np.where((TNG100['Sint']/particle_mass >= Npart_list[ii]))[0]]
+
+		axes.hist(samp['Afr'][samp['Type']<1],color = 'Green',bins=np.arange(1,2.5,0.01),density=True,cumulative=True,histtype='step',fill=False,label='centrals ({})'.format(len(samp['Afr'][samp['Type']<1])))
+		axes.hist(samp['Afr'][samp['Type']==1],color = 'Orange',bins=np.arange(1,2.5,0.01),density=True,cumulative=True,histtype='step',fill=False,label='satellites ({})'.format(len(samp['Afr'][samp['Type']==1])))
+		axes.legend()
+		axes.set_title('{} particles'.format(Npart_list[ii]))
+		if ii < 4:	
+			axes.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+		else:
+			axes.tick_params(axis = 'x', which = 'both', direction = 'in')
+		axes.tick_params(axis = 'y', which = 'both', direction = 'in')
+		axes.set_ylabel('Histogram Density')
+
+
+	ax5.set_xlabel('Asymmetry measure A$_{fr}$')
+	fig.suptitle('lgMstar>10.5',fontsize=18)
+	fig.savefig('./data/test12.png')
+
 
 def check_highmass_SFgals():
 	particle_mass = 1.4e6
@@ -841,8 +936,6 @@ def check_highmass_SFgals():
 			else:
 				compl_grid[ss,mm] = len(inbin_res) / len(inbin)
 
-
-
 def plot_selected_spectra():
 	
 	particle_mass = 1.4e6
@@ -858,7 +951,7 @@ def plot_selected_spectra():
 	TNG100_good = TNG100[good]
 	IDs = IDs[good]
 	# massrange_1 = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11))[0]
-	massrange = np.where((TNG100_good['mass_stars'] > 10.5) & (TNG100_good['mass_stars'] <= 11) & (TNG100_good['mass_halo'] < 13.5))[0]
+	massrange = np.where((TNG100_good['mass_stars'] > 10.5) & (TNG100_good['mass_stars'] <= 11) & (TNG100_good['mass_halo'] > 13.5))[0]
 
 	TNG_samp = TNG100_good[massrange]
 	IDs = IDs[massrange]
@@ -866,26 +959,342 @@ def plot_selected_spectra():
 	highAfr = np.where(TNG_samp['Afr']>1.7)[0]
 	IDs = IDs[highAfr]
 	print(IDs)
-	# exit()
+	print(TNG_samp)
+	print(TNG100[IDs]['subhaloes'])
+
+	# IDs = [ 31348, 60749, 76090, 88675,  161166, 217487]
+	IDs = [ 102, 197, 243, 300,  645, 1019]
 
 	spectra = np.loadtxt('/media/data/simulations/IllustrisTNG/TNG100_spectra_true.dat')
 	vel = spectra[:,0]
 	spectra = spectra[:,1::]
 	for ID in IDs:
 		spectrum = spectra[:,ID]
-		print(ID,TNG100['Afr'][ID])
+		print(ID,TNG100['mass_stars'][ID],TNG100['Afr'][ID],TNG100['Type'][ID], len(np.where(TNG100['groupnr'] == TNG100['groupnr'][ID])[0]))
 		fig, ax = plt.subplots()
-		ax.plot(range(len(vel)),spectrum,color='Black')
-		ax.plot([TNG100['PeaklocL'][ID],TNG100['PeaklocL'][ID]],[0,np.max(spectrum)],color = 'red')
-		ax.plot([TNG100['PeaklocR'][ID],TNG100['PeaklocR'][ID]],[0,np.max(spectrum)],color = 'red')
-		ax.plot([TNG100['w20L'][ID],TNG100['w20L'][ID]],[0,np.max(spectrum)],color='Blue',ls='--')
-		ax.plot([TNG100['w20R'][ID],TNG100['w20R'][ID]],[0,np.max(spectrum)],color='Blue',ls='--')
-		ax.set_xlabel('Channels')
+		ax.plot(vel,spectrum,color='Black')
+
+		vel_peak_L = vel[int(TNG100['PeaklocL'][ID])]
+		vel_peak_R = vel[int(TNG100['PeaklocR'][ID])]
+		vel_w20_L = np.interp(TNG100['w20L'][ID],np.arange(len(vel)),vel)
+		vel_w20_R = np.interp(TNG100['w20R'][ID],np.arange(len(vel)),vel)
+
+
+		ax.plot([vel_peak_L,vel_peak_L],[0,np.max(spectrum)],color = 'red')
+		ax.plot([vel_peak_R,vel_peak_R],[0,np.max(spectrum)],color = 'red')
+		ax.plot([vel_w20_L,vel_w20_L],[0,np.max(spectrum)],color='Blue',ls='--')
+		ax.plot([vel_w20_R,vel_w20_R],[0,np.max(spectrum)],color='Blue',ls='--')
+		ax.set_xlabel('Velocity')
 		ax.set_ylabel('HI mass')
 		ax.text(0.1,0.9,'Afr = {afr:.3f}'.format(afr=TNG100['Afr'][ID]),fontsize=12, transform=ax.transAxes)
-		plt.show()
+		# fig.savefig('./figures/ITNG_{id}_spectrum.png'.format(id=ID))
 
 	exit()
+
+
+def compare_asym_gasfraction():
+	particle_mass = 1.4e6
+
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	IDs = np.arange(len(TNG100))
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['SFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+	TNG100['Npart'] = TNG100['Sint']/particle_mass
+
+	TNG100['lgGF'] = np.log10(TNG100['Sint']) - TNG100['mass_stars']
+
+
+	Npart = [500,1000,2000,5000]
+
+	fig = plt.figure(figsize = (15,9))
+	gs  = gridspec.GridSpec(4, 4, left = 0.05, right = 0.99, top=0.97, bottom = 0.06)
+
+	for ii in range(4):
+		TNG100 = TNG100[(TNG100['Npart'] >= Npart[ii]) & (TNG100['Npart'] <= Npart[-2])]
+
+		halorange = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11) & (TNG100['mass_halo'] > 13.5))[0]
+		massrange = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11))[0]
+
+
+		TNG_samp_mass = TNG100[massrange]
+
+		TNG_samp = TNG100[halorange]
+
+		highAfr = np.where(TNG_samp['Afr'] > 1.7)[0]
+
+		scat_ax = fig.add_subplot(gs[ii,0])
+		hist_ax = fig.add_subplot(gs[ii,1])
+		Npart_ax = fig.add_subplot(gs[ii,2])
+		mstar_ax = fig.add_subplot(gs[ii,3])
+
+		scat_ax.set_xlim([-3.5,1.3])
+		scat_ax.set_ylim([0.95,3.7])
+
+		scat_ax.set_ylabel('Asymmetry measure Afr')
+		hist_ax.set_ylabel('Histogram Density')
+		Npart_ax.set_ylabel('Histogram Density')
+		mstar_ax.set_ylabel('Histogram Density')
+
+		scat_ax.scatter(TNG100['lgGF'],TNG100['Afr'], c = np.log10(TNG100['Npart']),s=1)
+		# scat_ax.colorbar()
+
+		# scat_ax.scatter(TNG_samp_mass['lgGF'],TNG_samp_mass['Afr'], color='Orange',s=5)
+
+		scat_ax.scatter(TNG_samp['lgGF'][np.where(TNG_samp['Afr'] <1.3)[0]],TNG_samp['Afr'][np.where(TNG_samp['Afr'] <1.3)[0]], color='Blue',s=5)
+
+		scat_ax.scatter(TNG_samp[highAfr]['lgGF'],TNG_samp[highAfr]['Afr'],color='Red',s=5)
+
+
+		hist_ax.hist(TNG_samp['lgGF'][np.where(TNG_samp['Afr'] <1.3)[0]],bins=np.arange(-2.2,0.2,0.1),color='Blue',density=True,histtype='step')
+		# hist_ax.hist(TNG_samp_mass['lgGF'],color='Orange',density=True,histtype='step')
+		hist_ax.hist(TNG_samp_mass[highAfr]['lgGF'],bins=np.arange(-2.2,0.2,0.1),color='Red',density=True,histtype='step')
+
+
+		Npart_ax.hist(np.log10(TNG_samp['Npart'][np.where(TNG_samp['Afr'] <1.3)[0]]),bins=np.arange(2.5,4.6,0.1), color='Blue',density=True,histtype='step')
+		Npart_ax.hist(np.log10(TNG_samp_mass[highAfr]['Npart']),bins=np.arange(2.5,4.6,0.1), color='Red',density=True,histtype='step')
+
+		mstar_ax.hist(TNG_samp['mass_stars'][np.where(TNG_samp['Afr'] <1.3)[0]],bins=np.arange(10.4,11,0.05), color='Blue',density=True,histtype='step')
+		mstar_ax.hist(TNG_samp_mass[highAfr]['mass_stars'],bins=np.arange(10.4,11,0.05), color='Red',density=True,histtype='step')
+
+
+
+
+
+	scat_ax.set_xlabel('log10 GF')
+	hist_ax.set_xlabel('log10 GF')
+	Npart_ax.set_xlabel('log10 Npart')
+	mstar_ax.set_xlabel('lgMstar')
+	fig.savefig('./figures/ITNG_Afr_lgGF_3.png')
+	plt.show()
+
+def gas_spatial_distribution():
+
+	import pickle
+	f =  open('/media/data/simulations/IllustrisTNG/cell_HI_data_Adam.pkl', 'rb') 
+	cell = pickle.load(f, encoding='bytes')
+
+	# print(cell)
+	newcell = {}
+	for key in cell.keys():
+		newcell[key.decode()] = cell[key]
+
+
+	IDs = [ 31348, 60749, 76090, 88675,  161166, 217487]
+
+	for ID in IDs:
+		data = newcell[str(ID)]
+
+		newdata = {}
+		for key in data.keys():
+			newdata[key.decode()] = data[key]
+
+
+		coordinates = np.array(newdata['pos'])
+		velocities = np.array(newdata['vel'])
+		HI_masses = np.array(newdata['mHI'])
+
+
+		# fig,ax  = plt.subplots()
+		# img = ax.scatter(coordinates[:,0],coordinates[:,1],s=0.1,c=np.log10(HI_masses))
+		# ax.set_xlabel('x [kpc]')
+		# ax.set_ylabel('y [kpc]')
+		# cbar = fig.colorbar(img)
+		# # plt.show()
+		# cbar.set_label('log10 HI mass',rotation=270)
+		# fig.savefig('./figures/ITNG_{id}_LOSspatial_faceon_HImass.png'.format(id=ID))
+
+		vel,spec = af.calc_spectrum(coordinates[:,0:2],velocities[:,2],HI_masses,dist=1,Vres=2,beamsize=[1000000000])
+		plt.plot(vel,spec)
+		vel,spec = af.create_HI_spectrum(coordinates[:,0:2],velocities[:,2],HI_masses,Vres=2,FWHM=[50,50])
+		plt.plot(vel,spec)
+
+		plt.show()
+		exit()
+
+
+
+		COM_gas = af.calc_COM(coordinates,HI_masses,Rmax=10)
+
+		coordinates -= COM_gas
+
+		gas_eigvec = af.orientation_matrix(coordinates, HI_masses)
+		coordinates = coordinates @ gas_eigvec
+		# velocities = velocities @ gas_eigvec
+
+
+
+
+		fig,ax  = plt.subplots()
+		img = ax.scatter(coordinates[:,0],coordinates[:,1],s=0.1,c=np.log10(HI_masses))
+		ax.set_xlim([-100,100])
+		ax.set_ylim([-100,100])
+		ax.set_xlabel('x [kpc]')
+		ax.set_ylabel('y [kpc]')
+		cbar = fig.colorbar(img)
+		# plt.show()
+		cbar.set_label('log10 HI mass',rotation=270)
+		fig.savefig('./figures/ITNG_{id}_ALIGNspatial_faceon_HImass.png'.format(id=ID))
+
+
+		fig,ax  = plt.subplots()
+		img = ax.scatter(coordinates[:,0],coordinates[:,2],s=0.1,c=np.log10(HI_masses))
+		ax.set_xlim([-100,100])
+		ax.set_ylim([-100,100])
+		ax.set_xlabel('x [kpc]')
+		ax.set_ylabel('z [kpc]')
+		cbar = fig.colorbar(img)
+		# plt.show()
+		cbar.set_label('log10 HI mass',rotation=270)
+		fig.savefig('./figures/ITNG_{id}_ALIGNspatial_edgeon_HImass.png'.format(id=ID))
+		
+
+
+	
+
+
+def Afr_halo_phasespace():
+
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+	good = np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]
+
+	Rvir = np.cbrt(np.array(TNG100['mass_halo'])* 4.3e-3 / (100 * 70*70 * 1.e-6 * 1.e-6) )*1.e-6
+	# exit()
+	pos = ['pos_rel_x','pos_rel_y','pos_rel_z']
+	vel = ['vel_rel_x','vel_rel_y','vel_rel_z']
+
+	# pos = ['pos_rel_x','pos_rel_y']
+
+	# vel = ['vel_rel_z']
+
+
+	# print(TNG100)
+	# exit()
+
+	rad = np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
+	vrel = np.sqrt(np.nansum((np.array([TNG100[v] for v in vel]).T)**2.e0, axis=1))
+	
+	grp_sigma = np.zeros(len(TNG100))
+	for grp in np.array(np.unique(TNG100['groupnr'])):
+		ingrp = np.where(TNG100['groupnr'] == grp)[0]
+		if len(ingrp) > 4:
+			grp_sigma[ingrp] = np.std(vrel[ingrp][vrel[ingrp] != 0])
+		else:
+			grp_sigma[ingrp] = -1
+
+	# rad = rad[good]
+	# Rvir = Rvir[good]
+	# vrel = vrel[good]
+	# grp_sigma = grp_sigma[good]
+
+
+	rad = rad[grp_sigma != -1]
+	Rvir = Rvir[grp_sigma != -1]
+	vrel = vrel[grp_sigma != -1]
+	grp_sigma = grp_sigma[grp_sigma != -1]
+
+	print(len(rad))
+
+
+	# for ii in range(len(np.where(vrel/grp_sigma == 2)[0])):
+	# 	grpnr = TNG100[np.where(vrel/grp_sigma == 2)[0]]['groupnr'][ii]
+	# 	print(grpnr)
+	# 	print(len(np.where(TNG100['groupnr'] == grpnr)[0]))
+	# 	print(vrel[TNG100['groupnr'] == grpnr])
+	# 	print(np.std(vrel[TNG100['groupnr'] == grpnr]))
+	# 	print(np.std(vrel[np.where(vrel/grp_sigma == 2)[0]]))
+	# 	exit()	
+
+	# print(TNG100[np.where(vrel/grp_sigma == 2)[0]])
+	# print(grp_sigma[np.where(vrel/grp_sigma == 2)[0]])
+	# print(vrel[np.where(vrel/grp_sigma == 2)[0]])
+	# exit()
+
+	plt.scatter(rad*1.e-3/Rvir, vrel/grp_sigma,s=2)
+	plt.show()
+
+
+def compare_xGASS_TNG100():
+
+	xG_filename = '/home/awatts/Adam_PhD/models_fitting/asymmetries/data/xGASS_asymmetries_catalogue.ascii'
+	xGASS = Table.read(xG_filename,format = 'ascii')
+	min_SN = 7
+	xGASS = xGASS[np.where((xGASS['SN_HI'] >= min_SN) & (xGASS['HIconf_flag']  < 1))[0]]
+
+	xGASS['sSFR'] = np.log10(xGASS['SFR']) - xGASS['lgMstar']
+
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+	TNG100 = TNG100[np.where((TNG100['Sint']/particle_mass >= 5.e3))[0]]
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
+	TNG100['sSFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+
+
+	lgMstar_list = [9,9.5,10,10.5,11,11.5]
+
+	# lgMstar_low = 10
+	# lgMstar_high = 10.5
+	sSFR_low = -13
+	sSFR_high = -8.5
+
+	fig = plt.figure(figsize = (20,20))
+	gs  = gridspec.GridSpec(len(lgMstar_list)-1, 3, left = 0.05, right = 0.99, top=0.97, bottom = 0.08)
+
+
+	for ii in range(len(lgMstar_list)-1):
+		lgMstar_low = lgMstar_list[ii]
+		lgMstar_high = lgMstar_list[ii+1]
+
+
+		TNG100_samp = TNG100[np.where((TNG100['mass_stars'] > lgMstar_low) & (TNG100['mass_stars'] < lgMstar_high) &
+							(TNG100['sSFR'] > sSFR_low) & (TNG100['sSFR'] < sSFR_high) )[0]]
+
+		xGASS_samp = xGASS[np.where((xGASS['lgMstar'] > lgMstar_low) & (xGASS['lgMstar'] < lgMstar_high) &
+						(xGASS['sSFR'] > sSFR_low) & (xGASS['sSFR'] < sSFR_high) & (xGASS['lgMh'] != 0))[0]]
+
+		print('----')
+		print(len(TNG100_samp[TNG100_samp['Type'] == -1]))
+		print(len(TNG100_samp[TNG100_samp['Type'] == 0]))
+		print(len(TNG100_samp[TNG100_samp['Type'] == 1]))
+		print('----')
+		print(len(xGASS_samp[xGASS_samp['env_code'] == 1]))
+		print(len(xGASS_samp[xGASS_samp['env_code'] == 2]))
+		print(len(xGASS_samp[xGASS_samp['env_code'] == 0]))
+
+		print('----')
+
+		sfms_ax = fig.add_subplot(gs[ii,0])
+		lgmh_ax = fig.add_subplot(gs[ii,1])
+		afr_ax = fig.add_subplot(gs[ii,2])
+
+		sfms_ax.scatter(TNG100['mass_stars'],TNG100['sSFR'], s=0.1)
+		sfms_ax.scatter(xGASS['lgMstar'],xGASS['sSFR'], s=0.5)
+		sfms_ax.plot([lgMstar_low,lgMstar_high,lgMstar_high,lgMstar_low,lgMstar_low],[sSFR_low,sSFR_low,sSFR_high,sSFR_high,sSFR_low],color='Red')
+		sfms_ax.set_ylim([-15,-8])
+		sfms_ax.set_ylabel('sSFR')
+		sfms_ax.set_xlabel('lgMstar')
+
+
+		lgmh_ax.hist(TNG100_samp['mass_halo'],bins = np.arange(10.5,15,0.25),density=True,alpha = 0.6,label='TNG100 ({num})'.format(num=len(TNG100_samp)))
+		lgmh_ax.hist(xGASS_samp['lgMh'],bins = np.arange(10.5,15,0.25),density=True,alpha = 0.4,label='xGASS ({num})'.format(num=len(xGASS_samp)))
+		lgmh_ax.set_xlabel('lgMh')
+		lgmh_ax.set_ylabel('Histogram Density')
+		lgmh_ax.legend()
+
+
+		afr_ax.hist(TNG100_samp['Afr'],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,histtype='step')
+		afr_ax.hist(xGASS_samp['Afr_spec_HI'],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,histtype='step')
+		afr_ax.set_xlabel('Asymmetry measure Afr')
+		afr_ax.set_ylabel('Histogram Density')
+
+	fig.savefig('./figures/test_sSFR_lgMh_Afr.png')
+	plt.show()
+
 
 
 
@@ -1193,6 +1602,8 @@ def areal_asymmetry(spectrum, limits, Vres):
 	return Sint, Afr
 
 if __name__ == '__main__':
+	# add_extended_measurements()
+	
 	# measure_TNG_spectra()
 	# plot_Afr_env()
 	# fix_measurements(0,0)
@@ -1206,9 +1617,16 @@ if __name__ == '__main__':
 	# plot_selected_spectra()
 	# check_highmass_SFgals()
 
-	find_bad_peaks()
+	# find_bad_peaks()
 
+	# Afr_halo_phasespace()
 
+	# compare_Afrhist_Npart()
 
+	# gas_spatial_distribution()
+
+	# compare_xGASS_TNG100()
+
+	compare_asym_gasfraction()
 
 

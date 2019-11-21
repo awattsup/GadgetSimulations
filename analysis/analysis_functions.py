@@ -22,43 +22,88 @@ def fourier_decomp_datacube():
 	sys.path.append('../../fourier-decomposition')
 	import fourier_decomposition as fd
 
-	# spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/datacube_test_incl60.dat')
-	spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/Genesis/data/datacube_incl60.dat')
 	# spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/IllustrisTNG/data/datacube_incl60.dat')
 	# spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/EAGLE_galaxies/data/datacube_ID8253667_incl60.dat')
+	controlled = genesis = TNG = False
+	for ii in range(3):
+		if ii == 0:
+			controlled = True
+		if ii == 1:
+			genesis = True
+		if ii == 2:
+			TNG = True
 
-	dx = np.abs(np.diff(spacebins)[0])
+		if controlled:
+			spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/datacube_incl60.dat')
+			spec = np.loadtxt('/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/spectrum_incl60.dat')
+			kinem_out = './data/controlled_kinem_incl60_fitV0.png'
+			spec_out = './data/controlled_spec_incl60.png'
 
-	mom0  = np.nansum(datacube/mjy_conversion(params['dist'], params['Vres']), axis=2) /  (( dx * 1.e3) ** 2.e0)
-	bad_sens = np.where(mom0 < 0.1)
+		if genesis:
+			spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/Genesis/data/datacube_incl60.dat')
+			spec = np.loadtxt('/media/data/simulations/Genesis/data/spectrum_incl60.dat')
+			kinem_out = './data/genesis_kinem_incl60_fitV0.png'
+			spec_out = './data/genesis_spec_incl60.png'
+
+		if TNG:
+			spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/IllustrisTNG/data/datacube_incl60.dat')
+			spec = np.loadtxt('/media/data/simulations/IllustrisTNG/data/spectrum_incl60.dat')
+			kinem_out = './data/TNG_kinem_incl60_fitV0.png'
+			spec_out = './data/TNG_spec_incl60.png'
+
+		# vel = spec[:,0]
+		# spec = spec[:,1]
+		# peaks =	locate_peaks(spec)
+		# widths = locate_width(spec, [spec[peaks[0]],spec[peaks[1]]], 0.2)
+		# Sint, Afr = areal_asymmetry(spec,widths,np.abs(np.diff(vel)[0]))
+
+		# fig,ax = plt.subplots()
+		# ax.plot(vel,spec,color='Black')
+		# ax.set_xlabel('Velocity',fontsize=15)
+		# ax.set_ylabel('Spectral flux',fontsize=15)
+		# ax.set_ylim([0,1.1*np.max(spec)])
+		# ax.text(0.05,0.95,'Afr = {afr:.3f}'.format(afr=Afr),transform=ax.transAxes,fontsize=12)
+		# fig.savefig(spec_out)
 
 
-	velcube = np.zeros([len(spacebins)-1,len(spacebins)-1,len(velbins)-1])
-	for ii in range(len(velbins)-1):
-		velcube[:,:,ii] = velbins[ii] + 0.5e0 * np.abs(np.diff(velbins))[0]
+		dx = np.abs(np.diff(spacebins)[0])
 
-	mom1 = np.nansum(datacube * velcube, axis = 2) / np.nansum(datacube, axis=2)
-
-	mom0[bad_sens] = np.nan 
-	mom1[bad_sens] = np.nan
-
-	plt.imshow(mom1)
-	plt.show()
-	# exit()
+		mom0  = np.nansum(datacube/mjy_conversion(params['dist'], params['Vres']), axis=2) /  (( dx * 1.e3) ** 2.e0)
+		bad_sens = np.where(mom0 < 0.1)
 
 
-	# centre = np.where(mom0 == np.nanmax(mom0))
-	# print(centre[0][0],centre[1][0])
+		velcube = np.zeros([len(spacebins)-1,len(spacebins)-1,len(velbins)-1])
+		for ii in range(len(velbins)-1):
+			velcube[:,:,ii] = velbins[ii] + 0.5e0 * np.abs(np.diff(velbins))[0]
+
+		mom1 = np.nansum(datacube * velcube, axis = 2) / np.nansum(datacube, axis=2)
+
+		mom0[bad_sens] = np.nan 
+		mom1[bad_sens] = np.nan
+
+		# plt.imshow(mom1)
+		# plt.show()
+		# exit()
+
+		if controlled:
+			centre = np.where(mom0 == np.nanmax(mom0))
+			x0 = centre[1][0]
+			y0 = centre[0][0]
+		else:
+			x0 = y0 = 0.5*len(mom0)
+		# print(centre[0][0],centre[1][0])
 
 
-	ellipse_params0, harmonic_coeffs_mom0 = fd.harmonic_decomposition(mom0, moment = 0,radii = 'linear', PAQ = [0,0.5], centre = [0.5*len(mom0),0.5*len(mom0)], image = True)
-	ellipse_params1, harmonic_coeffs_mom1 = fd.harmonic_decomposition(mom1, moment = 1,radii = 'linear', PAQ = [0,0.5],
-											Vsys = False, centre = [0.5*len(mom0),0.5*len(mom0)], image = True)
+		ellipse_params0, harmonic_coeffs_mom0 = fd.harmonic_decomposition(mom0, moment = 0,radii = 'linear', PAQ = [0,0.5], centre = [x0,y0], image = True)
+		ellipse_params1, harmonic_coeffs_mom1 = fd.harmonic_decomposition(mom1, moment = 1,radii = 'linear', PAQ = [0,0.5],
+												Vsys = True, centre = [x0,y0], image = True)
 
-	mom0 = np.log10(mom0)
-	fd.plot_radial_asym_measures(ellipse_params0, ellipse_params1, 
-		harmonic_coeffs_mom0, harmonic_coeffs_mom1, mom0, mom1, dx)
+		mom0 = np.log10(mom0)
+		fd.plot_radial_asym_measures(ellipse_params0, ellipse_params1, 
+			harmonic_coeffs_mom0, harmonic_coeffs_mom1, mom0, mom1, dx, save=kinem_out)
 
+
+		controlled = genesis = TNG = False
 
 ### datacube and spectra creation /saving
 
@@ -67,13 +112,13 @@ def HI_datacube_spectrum_simulation():
 
 	incl = 60
 
-	# filename = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/snaps/snapshot_000.hdf5'
-	# gas_coordinates, gas_velocities, HI_masses = read_controlled_run(filename)
-	# outname_dcb = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/datacube_incl{incl}.dat'.format(incl=incl)
-	# outname_spec = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/spectrum_incl{incl}.dat'.format(incl=incl)
+	filename = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/snaps/snapshot_000.hdf5'
+	gas_coordinates, gas_velocities, HI_masses = read_controlled_run(filename)
+	outname_dcb = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/datacube_incl{incl}.dat'.format(incl=incl)
+	outname_spec = '/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/spectrum_incl{incl}.dat'.format(incl=incl)
 
-	# gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
-	# gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
+	gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
+	gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
 
 	# vel,spec = create_HI_spectrum(gas_coordinates_obs, gas_vel_obs, HI_masses, FWHM = [200,200])
 	# plt.plot(vel,spec)
@@ -87,32 +132,32 @@ def HI_datacube_spectrum_simulation():
 	# exit()
 
 
-	# create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
-	# create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
+	create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
+	create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
 
-	# filename = '/media/data/simulations/EAGLE_galaxies/EAGLE_galaxyID8253667.hdf5'
-	# gas_coordinates, gas_velocities, HI_masses = read_EAGLE(filename)
-	# outname_dcb = '/media/data/simulations/EAGLE_galaxies/data/datacube_ID8253667_incl{incl}.dat'.format(incl = incl)
-	# outname_spec = '/media/data/simulations/EAGLE_galaxies/data/spectrum_ID8253667_incl{incl}.dat'.format(incl = incl)
+	filename = '/media/data/simulations/EAGLE_galaxies/EAGLE_galaxyID8253667.hdf5'
+	gas_coordinates, gas_velocities, HI_masses = read_EAGLE(filename)
+	outname_dcb = '/media/data/simulations/EAGLE_galaxies/data/datacube_ID8253667_incl{incl}.dat'.format(incl = incl)
+	outname_spec = '/media/data/simulations/EAGLE_galaxies/data/spectrum_ID8253667_incl{incl}.dat'.format(incl = incl)
 
-	# gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
-	# gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
-
-
-	# create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
-	# create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
-
-	# filename = '/media/data/simulations/IllustrisTNG/TNG_556247'
-	# gas_coordinates, gas_velocities, HI_masses = read_TNG(filename)
-	# outname_dcb = '/media/data/simulations/IllustrisTNG/data/datacube_incl{incl}.dat'.format(incl=incl)
-	# outname_spec = '/media/data/simulations/IllustrisTNG/data/spectrum_incl{incl}.dat'.format(incl=incl)
-
-	# gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
-	# gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
+	gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
+	gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
 
 
-	# create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
-	# create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
+	create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
+	create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
+
+	filename = '/media/data/simulations/IllustrisTNG/TNG_556247'
+	gas_coordinates, gas_velocities, HI_masses = read_TNG(filename)
+	outname_dcb = '/media/data/simulations/IllustrisTNG/data/datacube_incl{incl}.dat'.format(incl=incl)
+	outname_spec = '/media/data/simulations/IllustrisTNG/data/spectrum_incl{incl}.dat'.format(incl=incl)
+
+	gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0,incl)
+	gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
+
+
+	create_HI_datacube(gas_coordinates_obs, gas_vel_obs, HI_masses, filename=outname_dcb)
+	create_HI_spectrum(gas_coordinates_obs,gas_vel_obs,HI_masses, filename = outname_spec)
 
 	filename = '/media/data/simulations/Genesis/snapshot_199.hdf5'
 	gas_coordinates, gas_velocities, HI_masses = read_Genesis(filename)
@@ -123,9 +168,9 @@ def HI_datacube_spectrum_simulation():
 	gas_coordinates_obs = calc_coords_obs(gas_coordinates, 0, incl)
 	gas_vel_obs = calc_vel_obs(gas_velocities, 0, incl)
 
-	bins, image = calc_spatial_dist(gas_coordinates_obs,HI_masses,50)
-	plt.imshow(image)
-	plt.show()
+	# bins, image = calc_spatial_dist(gas_coordinates_obs,HI_masses,50)
+	# plt.imshow(image)
+	# plt.show()
 	# exit()
 
 
@@ -807,21 +852,22 @@ def resolution_test_TNG():
 	unitmass = 1.e10
 	ID = 556247
 
+	Nsamp = 10000
+
+
 	# snaplist = [0, 25, 50, 75]
-	plot = True
+	plot1 = False
+	plot2 = False
 
 	# basedir = '/media/data/simulations/IllustrisTNG/'
 	basedir = '/media/data/simulations/IllustrisTNG/'
 
-
-	if plot:
-
-	
+	if plot1:
 
 		phi_list = [0,45,90]
 		theta_list = [90,50,20]
 		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
-		Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
+		Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list),2])
 		Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
 		
 
@@ -829,14 +875,14 @@ def resolution_test_TNG():
 		for proc in range(Nproc):
 			file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
 			data = np.loadtxt(file)
-			data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list)) )
+			data = data.reshape( (len(Npart_list),1000,len(phi_list)*len(theta_list),2) )
 			Afr_list += data
 
 		for nn in range(len(Npart_list)):
 			for pp in range(len(phi_list)):
 				for tt in range(len(theta_list)):
-					Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt])
-					Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt])
+					Afr_med_errs[nn,pp*len(phi_list)+tt,0] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt,0])
+					Afr_med_errs[nn,pp*len(phi_list)+tt,1] = median_absolute_deviation(Afr_list[nn,:,pp*len(phi_list)+tt,0])
 
 		print(Afr_med_errs[:,:,1])
 
@@ -878,11 +924,89 @@ def resolution_test_TNG():
 		Afr_figname = '{basedir}/figures/TNG_{ID}_Afr_Npart.png'.format(basedir=basedir,ID=ID)
 		Afrfig.savefig(Afr_figname, dpi=200)
 
+	elif plot2:
+		particle_mass = 1.4e6
+
+		phi_list = [0,45,90]
+		theta_list = [90,50,20]
+		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		percentiles = [10,20,30,40,50,60,70,80,90]
+		Afr_list = np.zeros([len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2])
+		
+
+		Afr_percentiles = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),11])
+
+		
+
+		Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
+		for proc in range(Nproc):
+			file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
+			data = np.loadtxt(file)
+			data = data.reshape( (len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2) )
+			Afr_list += data
+
+		for nn in range(len(Npart_list)):
+			Afr_med_errs[nn,pp*len(phi_list)+tt,0] = Npart_list[nn]
+			for pp in range(len(phi_list)):
+				for tt in range(len(theta_list)):
+					Afr_med_errs[nn,pp*len(phi_list)+tt,1] = np.mean(Afr_list[nn,:,pp*len(phi_list)+tt,1]/particle_mass)
+
+					for per in range(len(percentiles)):
+						Afr_med_errs[nn,pp*len(phi_list)+tt,per] = np.percentile(Afr_list[nn,:,pp*len(phi_list)+tt,0],percentiles[per])
+
+		for tt in range(len(theta_list)):
+			Afrfig = plt.figure(figsize=(15,10))
+			Afr_gs = gridspec.GridSpec(3,1) 
+			Afr_ax1 = Afrfig.add_subplot(Afr_gs[0,0])
+			Afr_ax2 = Afrfig.add_subplot(Afr_gs[1,0], sharex = Afr_ax1,sharey = Afr_ax1)
+			Afr_ax3 = Afrfig.add_subplot(Afr_gs[2,0], sharex = Afr_ax1,sharey = Afr_ax1)
+			Afr_ax1.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax2.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 15)
+			Afr_ax3.set_xlabel('Number of particles',fontsize = 15)
+			Afr_ax1.set_xscale('log')
+			Afr_ax2.set_xscale('log')
+			Afr_ax3.set_xscale('log')
+			Afr_ax3.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+
+			Afr_ax1.plot(Afr_percentiles[:,tt,0],Afr_percentiles[:,tt,-1], color='Orange')
+			Afr_ax1.plot(Afr_percentiles[:,tt,0],Afr_percentiles[:,tt,-5], color='Green')
+			Afr_ax1.plot(Afr_percentiles[:,tt,1],Afr_percentiles[:,tt,-1], color='Orange',ls = '--')
+			Afr_ax1.plot(Afr_percentiles[:,tt,1],Afr_percentiles[:,tt,-5], color='Green',ls = '--')
+			Afr_ax1.set_title('$\theta = {th}  \phi = {ph}'.format(th = theta_list[th],ph = phi_list[0]))
+
+			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,0],Afr_percentiles[:,len(phi_list)+tt,-1], color='Orange')
+			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,0],Afr_percentiles[:,len(phi_list)+tt,-5], color='Green')
+			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,1],Afr_percentiles[:,len(phi_list)+tt,-1], color='Orange',ls = '--')
+			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,1],Afr_percentiles[:,len(phi_list)+tt,-5], color='Green',ls = '--')
+			Afr_ax2.set_title('$\theta = {th}  \phi = {ph}'.format(th = theta_list[th],ph = phi_list[1]))
+
+			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,0],Afr_percentiles[:,2*len(phi_list)+tt,-1], color='Orange')
+			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,0],Afr_percentiles[:,2*len(phi_list)+tt,-5], color='Green')
+			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,1],Afr_percentiles[:,2*len(phi_list)+tt,-1], color='Orange',ls = '--')
+			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,1],Afr_percentiles[:,2*len(phi_list)+tt,-5], color='Green',ls = '--')
+			Afr_ax3.set_title('$\theta = {th}  \phi = {ph}'.format(th = theta_list[th],ph = phi_list[1]))
+
+
+			leg = [Line2D([0],[0],ls='-',color='Black'),
+					Line2D([0],[0],ls='--',color='Black'),
+					Line2D([0],[0],ls='-',color='Green'),
+					Line2D([0],[0],ls='-',color='Orange')]
+
+			Afr_ax1.legend(leg,['Raw Npart', 'Mass weighted Npart', 'P50', 'P90'])
+
+			Afr_figname = '{basedir}/figures/TNG_{ID}_Afr_Npart_percentile_th{th}.png'.format(basedir=basedir,ID=ID,th=theta_range[th])
+			Afrfig.savefig(Afr_figname, dpi = 200)
+			plt.close()
+
 	else:
 	
 		if rank == 0:
 			filename = '{dir}TNG_{ID}'.format(dir = basedir, ID=ID)
-			gas_coordinates, gas_velocities, HI_masses = read_TNGsnap(filename)
+			gas_coordinates, gas_velocities, HI_masses = read_TNG(filename)
 		else:
 			HI_masses = np.array([])
 			gas_coordinates = np.array([])
@@ -897,11 +1021,12 @@ def resolution_test_TNG():
 		comm.Barrier()
 		# exit()
 
+
 		phi_list = [0,45,90]
 		theta_list = [90,50,20]
 		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
-		Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list)])
-		Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+		Afr_list = np.zeros([len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2])
+		# Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
 
 		for nn in range(len(Npart_list)):
 			Npart = Npart_list[nn]
@@ -926,19 +1051,31 @@ def resolution_test_TNG():
 					gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
 					gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
 
-					for ss in range(rank,1000,nproc):
+					vel, spectrum = calc_spectrum(gas_coords_temp,gas_vel_temp,HI_masses_temp,beamsize = 40)
+
+					Peaklocs = locate_peaks(spectrum)
+					# print(Peaklocs)
+					Peaks = [spectrum[Peaklocs[0]],spectrum[Peaklocs[1]]]
+					widths = locate_width(spectrum, Peaks, 0.2)
+
+					# plt.plot(spectrum)
+					# plt.plot([Peaklocs[0],Peaklocs[0]],[0,np.max(spectrum)])
+					# plt.plot([Peaklocs[1],Peaklocs[1]],[0,np.max(spectrum)])
+					# plt.show()
+					# exit()
+
+					for ss in range(rank,Nsamp,nproc):
 						particle_sample = nprand.choice(range(len(HI_masses)), Npart)
 							
 						vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
 						gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
 
-						Peak = np.nanmax(spectrum)
-						widths = locate_width(spectrum, [Peak,Peak], 0.2)
 						Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-						Afr_list[nn,ss,pp*len(phi_list)+tt] = Afr
+						Afr_list[nn,ss,pp*len(phi_list)+tt,0] = Afr
+						Afr_list[nn,ss,pp*len(phi_list)+tt,1] = Sint
 		Afr_list.flatten()
 		np.savetxt('{dir}/data/restest{ID}_proc{rank}.dat'.format(dir=basedir,ID=ID, rank=rank), 
-			Afr_list.reshape(len(Npart_list)*1000*len(phi_list)*len(theta_list)))
+			Afr_list.reshape(len(Npart_list),1000*len(phi_list)*len(theta_list)*2))
 
 		comm.Barrier()			
 
@@ -2283,7 +2420,7 @@ def calc_spectrum(coords_obs, gas_vel_LOS, HI_masses, dist = 50, Vres = 5, beams
 	gas_vel_LOS = gas_vel_LOS[inbeam]
 	HI_masses = HI_masses[inbeam]
 
-	vlim = 300.e0
+	vlim = 500.e0
 	vel_bins = np.arange(-vlim,vlim + Vres,Vres)
 	vel_points = vel_bins[0:-1] + 0.5 * Vres
 	spectrum = np.zeros([len(vel_bins) - 1])
@@ -2299,7 +2436,7 @@ def calc_spectrum(coords_obs, gas_vel_LOS, HI_masses, dist = 50, Vres = 5, beams
 		for part in invel:
 			Mfrac = gaussian_CDF(vel_high, gas_vel_LOS[part], 7.e0) - \
 					gaussian_CDF(vel_low, gas_vel_LOS[part], 7.e0)
-			spectrum[vv] += HI_masses[part] * Mfrac * mjy_conv
+			spectrum[vv] += HI_masses[part] * Mfrac #* mjy_conv
 	return vel_points, spectrum
 
 def locate_peaks(spectrum):
@@ -2307,7 +2444,7 @@ def locate_peaks(spectrum):
 	PeakL = 0
 	PeaklocL = int(len(spectrum)/2.)
 	chan=1
-	while(chan< len(spectrum)/2 + 5):
+	while(chan< len(spectrum)/2 + 10):
 		chan+=1
 		grad = (spectrum[chan] - spectrum[chan-1]) * (spectrum[chan+1] - spectrum[chan])
 		if grad<0 and spectrum[chan]>PeakL:
@@ -2317,7 +2454,7 @@ def locate_peaks(spectrum):
 	PeakR = 0
 	PeaklocR = int(len(spectrum)/2.)
 	chan = len(spectrum)-1
-	while(chan > len(spectrum)/2 - 5 ):
+	while(chan > len(spectrum)/2 - 10 ):
 		chan-=1
 		grad = (spectrum[chan] - spectrum[chan+1]) * (spectrum[chan-1] - spectrum[chan])
 		if grad<0 and spectrum[chan]>PeakR:
@@ -2489,7 +2626,7 @@ def create_HI_spectrum(coordinates, velocities, HI_masses, Vres = 5, centre = [0
 	
 	HImasses_weighted = HI_masses * gaussian_beam_response(coordinates, centre = centre, FWHM = FWHM)
 
-	vlim = 300.e0
+	vlim = 400.e0
 	vel_bins = np.arange(-vlim,vlim + Vres,Vres)
 	vel_points = vel_bins[0:-1] + 0.5 * Vres
 	spectrum = np.zeros([len(vel_bins) - 1])
@@ -2516,7 +2653,7 @@ def create_HI_datacube(coordinates, velocities, HI_masses, params = None, filena
 		params = {'dist':50,					#Mpc
 				'cubephys':100,					#kpc (left to right)
 				'cubedim':250,					#pixels 
-				'Vlim':600,						#km/s bandwidth
+				'Vlim':800,						#km/s bandwidth
 				'Vres':5,						#km/s
 				'B_FWHM':1,						#kpc
 				'rms':0}						#mJy RMS noise
@@ -3157,7 +3294,7 @@ if __name__ == '__main__':
 
 	# resolution_test_EAGLE()
 
-	# resolution_test_TNG()
+	resolution_test_TNG()
 
 	# read_Genesis()
 
@@ -3165,5 +3302,5 @@ if __name__ == '__main__':
 
 	# HI_datacube_spectrum_simulation()
 
-	fourier_decomp_datacube()
+	# fourier_decomp_datacube()
 
