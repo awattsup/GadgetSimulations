@@ -1,10 +1,10 @@
 import numpy as np 
 from astropy.table import Table
-import matplotlib.pyplot as plt 
-import matplotlib.gridspec as gridspec
-from matplotlib.ticker import FormatStrFormatter
-from matplotlib.colorbar import Colorbar
-from matplotlib.lines import Line2D
+# import matplotlib.pyplot as plt 
+# import matplotlib.gridspec as gridspec
+# from matplotlib.ticker import FormatStrFormatter
+# from matplotlib.colorbar import Colorbar
+# from matplotlib.lines import Line2D
 import h5py
 import glob
 import numpy.random as nprand
@@ -36,7 +36,7 @@ def fourier_decomp_datacube():
 		if controlled:
 			spacebins, velbins, datacube, params = read_datacube('/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/datacube_incl60.dat')
 			spec = np.loadtxt('/media/data/simulations/parameterspace_models/iso_fbar0.01_BT0_FB0_GF10/data/spectrum_incl60.dat')
-			kinem_out = './data/controlled_kinem_incl60_fitV0.png'
+			kinem_out = './data/controlled_kinem_incl60_annulartest3.png'
 			spec_out = './data/controlled_spec_incl60.png'
 
 		if genesis:
@@ -68,7 +68,11 @@ def fourier_decomp_datacube():
 
 		dx = np.abs(np.diff(spacebins)[0])
 
+		# print(dx)
+		# exit()
+
 		mom0  = np.nansum(datacube/mjy_conversion(params['dist'], params['Vres']), axis=2) /  (( dx * 1.e3) ** 2.e0)
+		mom0 = convolve(mom0,Gaussian2DKernel(2/dx))
 		bad_sens = np.where(mom0 < 0.1)
 
 
@@ -94,9 +98,10 @@ def fourier_decomp_datacube():
 		# print(centre[0][0],centre[1][0])
 
 
-		ellipse_params0, harmonic_coeffs_mom0 = fd.harmonic_decomposition(mom0, moment = 0,radii = 'linear', PAQ = [0,0.5], centre = [x0,y0], image = True)
+		ellipse_params0, harmonic_coeffs_mom0 = fd.harmonic_decomposition(mom0, moment = 0,radii = 'linear', image = True)
 		ellipse_params1, harmonic_coeffs_mom1 = fd.harmonic_decomposition(mom1, moment = 1,radii = 'linear', PAQ = [0,0.5],
-												Vsys = True, centre = [x0,y0], image = True)
+												Vsys = False, centre = [x0,y0], image = True)
+
 
 		mom0 = np.log10(mom0)
 		fd.plot_radial_asym_measures(ellipse_params0, ellipse_params1, 
@@ -104,6 +109,7 @@ def fourier_decomp_datacube():
 
 
 		controlled = genesis = TNG = False
+		exit()
 
 ### datacube and spectra creation /saving
 
@@ -205,7 +211,6 @@ def read_TNG(base):
 	H2mass_GK11 = gas[:,12]
 	H2mass_GD14 = gas[:,13]
 	H2mass_K13 = gas[:,14]
-
 
 	COM_gas = calc_COM(gas_coordinates, gas_neutral_masses, Rmax=10)
 	COM_stars = calc_COM(stars_coordinates, stars_masses)
@@ -858,15 +863,19 @@ def resolution_test_TNG():
 	# snaplist = [0, 25, 50, 75]
 	plot1 = False
 	plot2 = False
+	plot3 = False
+	plot4 = False
 
 	# basedir = '/media/data/simulations/IllustrisTNG/'
-	basedir = '/media/data/simulations/IllustrisTNG/'
+	# basedir = '/media/data/simulations/IllustrisTNG/'
+	basedir = '/home/awatts/Adam_PhD/models_fitting/GadgetSimulations/simulations/IllustrisTNG/'
 
 	if plot1:
 
 		phi_list = [0,45,90]
 		theta_list = [90,50,20]
-		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		# Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		Npart_list = [50,500, 5000,  14000]
 		Afr_list = np.zeros([len(Npart_list),1000,len(phi_list)*len(theta_list),2])
 		Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
 		
@@ -930,13 +939,11 @@ def resolution_test_TNG():
 		phi_list = [0,45,90]
 		theta_list = [90,50,20]
 		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		# Npart_list = [50,500, 5000]
 		percentiles = [10,20,30,40,50,60,70,80,90]
 		Afr_list = np.zeros([len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2])
 		
-
 		Afr_percentiles = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),11])
-
-		
 
 		Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
 		for proc in range(Nproc):
@@ -946,14 +953,15 @@ def resolution_test_TNG():
 			Afr_list += data
 
 		for nn in range(len(Npart_list)):
-			Afr_med_errs[nn,pp*len(phi_list)+tt,0] = Npart_list[nn]
 			for pp in range(len(phi_list)):
 				for tt in range(len(theta_list)):
-					Afr_med_errs[nn,pp*len(phi_list)+tt,1] = np.mean(Afr_list[nn,:,pp*len(phi_list)+tt,1]/particle_mass)
+					Afr_percentiles[nn,pp*len(phi_list)+tt,0] = Npart_list[nn]
+					
+					Afr_percentiles[nn,pp*len(phi_list)+tt,1] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt,1]/(5 * particle_mass * 14198 / Npart_list[nn]))
 
 					for per in range(len(percentiles)):
-						Afr_med_errs[nn,pp*len(phi_list)+tt,per] = np.percentile(Afr_list[nn,:,pp*len(phi_list)+tt,0],percentiles[per])
-
+						Afr_percentiles[nn,pp*len(phi_list)+tt,per+2] = np.percentile(Afr_list[nn,:,pp*len(phi_list)+tt,0],percentiles[per])
+	
 		for tt in range(len(theta_list)):
 			Afrfig = plt.figure(figsize=(15,10))
 			Afr_gs = gridspec.GridSpec(3,1) 
@@ -967,28 +975,30 @@ def resolution_test_TNG():
 			Afr_ax1.set_xscale('log')
 			Afr_ax2.set_xscale('log')
 			Afr_ax3.set_xscale('log')
+			Afr_ax1.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
+			Afr_ax2.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
 			Afr_ax3.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 13)
 			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
-			Afr_ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+			Afr_ax2.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
 
 
 			Afr_ax1.plot(Afr_percentiles[:,tt,0],Afr_percentiles[:,tt,-1], color='Orange')
 			Afr_ax1.plot(Afr_percentiles[:,tt,0],Afr_percentiles[:,tt,-5], color='Green')
 			Afr_ax1.plot(Afr_percentiles[:,tt,1],Afr_percentiles[:,tt,-1], color='Orange',ls = '--')
 			Afr_ax1.plot(Afr_percentiles[:,tt,1],Afr_percentiles[:,tt,-5], color='Green',ls = '--')
-			Afr_ax1.set_title('$\theta = {th}  \phi = {ph}'.format(th = theta_list[th],ph = phi_list[0]))
+			Afr_ax1.set_title(r'$\theta$ = {th}  $\phi$ = {ph}'.format(th = theta_list[tt],ph = phi_list[0]))
 
 			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,0],Afr_percentiles[:,len(phi_list)+tt,-1], color='Orange')
 			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,0],Afr_percentiles[:,len(phi_list)+tt,-5], color='Green')
 			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,1],Afr_percentiles[:,len(phi_list)+tt,-1], color='Orange',ls = '--')
 			Afr_ax2.plot(Afr_percentiles[:,len(phi_list)+tt,1],Afr_percentiles[:,len(phi_list)+tt,-5], color='Green',ls = '--')
-			Afr_ax2.set_title('$\theta = {th}  \phi = {ph}'.format(th = theta_list[th],ph = phi_list[1]))
+			Afr_ax2.set_title(r'$\theta$ = {th}  $\phi$ = {ph}'.format(th = theta_list[tt],ph = phi_list[1]))
 
 			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,0],Afr_percentiles[:,2*len(phi_list)+tt,-1], color='Orange')
 			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,0],Afr_percentiles[:,2*len(phi_list)+tt,-5], color='Green')
 			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,1],Afr_percentiles[:,2*len(phi_list)+tt,-1], color='Orange',ls = '--')
 			Afr_ax3.plot(Afr_percentiles[:,2*len(phi_list)+tt,1],Afr_percentiles[:,2*len(phi_list)+tt,-5], color='Green',ls = '--')
-			Afr_ax3.set_title('$\theta = {th}  \phi = {ph}'.format(th = theta_list[th],ph = phi_list[1]))
+			Afr_ax3.set_title(r'$\theta$ = {th}  $\phi$ = {ph}'.format(th = theta_list[tt],ph = phi_list[2]))
 
 
 			leg = [Line2D([0],[0],ls='-',color='Black'),
@@ -998,15 +1008,163 @@ def resolution_test_TNG():
 
 			Afr_ax1.legend(leg,['Raw Npart', 'Mass weighted Npart', 'P50', 'P90'])
 
-			Afr_figname = '{basedir}/figures/TNG_{ID}_Afr_Npart_percentile_th{th}.png'.format(basedir=basedir,ID=ID,th=theta_range[th])
-			Afrfig.savefig(Afr_figname, dpi = 200)
+			# Afr_figname = '{basedir}/figures/TNG_{ID}_Afr_Npart_percentile_th{th}.png'.format(basedir=basedir,ID=ID,th=theta_list[tt])
+			# Afrfig.savefig(Afr_figname, dpi = 200)
 			plt.close()
+
+		names = ['Npart', 'Npart_HIweight']
+		names.extend(['P{p}'.format(p=p) for p in percentiles])
+
+		print(names)
+		percentiles_sym = Table(Afr_percentiles[:,6,:],names = names)
+		percentiles_sym.write('{basedir}/data/TNG_sym_percentile_stats.dat'.format(basedir=basedir),format='ascii')
+
+
+	elif plot3:
+		particle_mass = 1.4e6
+
+		phi_list = [0,45,90]
+		theta_list = [90,50,20]
+		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		Afr_list = np.zeros([len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2])
+		
+		Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
+		for proc in range(Nproc):
+			file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
+			data = np.loadtxt(file)
+			data = data.reshape( (len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2) )
+			Afr_list += data
+
+		Afr_500part = A_500part = Afr_list[4,:,6,0]
+		Afr_1000part = A_1000part = Afr_list[6,:,6,0]
+		Afr_5000part = A_5000part = Afr_list[8,:,6,0]
+
+
+		A_500part[0:-1:2] = 1/Afr_500part[0:-1:2]
+		A_1000part[0:-1:2] = 1/Afr_1000part[0:-1:2]
+		A_5000part[0:-1:2] = 1/Afr_5000part[0:-1:2]
+
+
+
+
+		fig = plt.figure(figsize = (15,9))
+		gs  = gridspec.GridSpec(1, 2, left = 0.1, right = 0.99, top=0.97, bottom = 0.11)
+		Aax = fig.add_subplot(gs[0,0])
+		Afrax = fig.add_subplot(gs[0,1])
+
+		Aax.set_xlim([-0.25,0.25])
+		Afrax.set_xlim([0.99,1.85])
+
+		Aax.tick_params( direction = 'in', labelsize = 25,length=8,width=1.5)
+		Aax.tick_params( direction = 'in', labelsize = 25,length=8,width=1.5)
+
+		Afrax.tick_params( direction = 'in', labelsize = 25,length=8,width=1.5)
+		Afrax.tick_params( direction = 'in', labelsize = 25,length=8,width=1.5)
+
+
+		Aax.hist(np.log10(A_5000part),bins=41,histtype= 'step',fill=False,density=True
+			, lw = 3, color='Black', ls = ':')
+		Aax.hist(np.log10(A_1000part),bins=41,histtype= 'step',fill=False,density=True
+			, lw = 3, color='Blue', ls = '--')
+		Aax.hist(np.log10(A_500part),bins=41,histtype= 'step',fill=False,density=True
+			, lw = 3, color='Red', ls = '-')
+
+		Afrax.hist(Afr_5000part,bins=np.arange(1,1.9,0.01),histtype= 'step',cumulative=True,fill=False,density=True
+			, lw = 3, color='Black', ls = ':')
+		Afrax.hist(Afr_1000part,bins=np.arange(1,1.9,0.01),histtype= 'step',cumulative=True,fill=False,density=True
+			, lw = 3, color='Blue', ls = '--')
+		Afrax.hist(Afr_500part,bins=np.arange(1,1.9,0.01),histtype= 'step',cumulative=True,fill=False,density=True
+			, lw = 3, color='Red', ls = '-')
+		
+
+
+		Afrax.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=27)
+		Aax.set_xlabel('log$_{10}(A)$',fontsize=27)
+
+		Afrax.set_ylabel('Cumulative Hisogram',fontsize=27)
+		Aax.set_ylabel('Histogram Density',fontsize=27)
+
+
+
+		legend = [Line2D([0], [0], color = 'Black',ls = ':', linewidth = 3),
+					Line2D([0], [0], color = 'Blue',ls = '--', linewidth = 3),
+					Line2D([0], [0], color = 'Red',ls = '-', linewidth = 3)]
+
+		Aax.legend(legend,['N$_{part}$ = 5000','N$_{part}$ = 1000','N$_{part}$ = 500'],fontsize=24)
+
+		fig.savefig('{basedir}/figures/logA_Afr_dist.png'.format(basedir=basedir))
+		plt.show()
+
+
+	elif plot4:
+		particle_mass = 1.4e6
+		phi_list = [0,45,90]
+		theta_list = [90,50,20]
+		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
+		# Npart_list = [50,500, 5000]
+		percentiles = [10,20,30,40,50,60,70,80,90]
+		Afr_list = np.zeros([len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2])
+		
+		Afr_percentiles = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),11])
+
+		Nproc = len(glob.glob('{basedir}/data/restest{ID}_proc*'.format(basedir = basedir,ID=ID)))
+		for proc in range(Nproc):
+			file = '{basedir}/data/restest{ID}_proc{proc}.dat'.format(basedir = basedir, ID=ID,proc=proc)
+			data = np.loadtxt(file)
+			data = data.reshape( (len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2) )
+			Afr_list += data
+
+		for nn in range(len(Npart_list)):
+			for pp in range(len(phi_list)):
+				for tt in range(len(theta_list)):
+					Afr_percentiles[nn,pp*len(phi_list)+tt,0] = Npart_list[nn]
+					
+					Afr_percentiles[nn,pp*len(phi_list)+tt,1] = np.median(Afr_list[nn,:,pp*len(phi_list)+tt,1]/(5 * particle_mass * 14198 / Npart_list[nn]))
+
+					for per in range(len(percentiles)):
+						Afr_percentiles[nn,pp*len(phi_list)+tt,per+2] = np.percentile(Afr_list[nn,:,pp*len(phi_list)+tt,0],percentiles[per])
+	
+		Afrfig = plt.figure(figsize=(8,4))
+		Afr_gs = gridspec.GridSpec(1,1) 
+		Afr_ax1 = Afrfig.add_subplot(Afr_gs[0,0])
+		Afr_ax1.set_ylabel('Asymmetry measure A$_{fr}$',fontsize = 16)
+		Afr_ax1.set_xlabel('Number of particles',fontsize = 16)
+		Afr_ax1.set_xscale('log')
+		Afr_ax1.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 16,length = 8, width = 1.25)
+		Afr_ax1.tick_params(axis = 'both', which = 'minor', direction = 'in', labelsize = 16,length = 4, width = 1.25)
+
+
+		Afr_ax1.plot(Afr_percentiles[:,6,0],Afr_percentiles[:,6,-1], color='Orange')
+		Afr_ax1.plot(Afr_percentiles[:,6,0],Afr_percentiles[:,6,-5], color='Green')
+		Afr_ax1.plot(Afr_percentiles[:,6,1],Afr_percentiles[:,6,-1], color='Orange',ls = '--')
+		Afr_ax1.plot(Afr_percentiles[:,6,1],Afr_percentiles[:,6,-5], color='Green',ls = '--')
+
+		
+
+		leg = [Line2D([0],[0],ls='-',color='Black'),
+				Line2D([0],[0],ls='--',color='Black'),
+				Line2D([0],[0],ls='-',color='Green'),
+				Line2D([0],[0],ls='-',color='Orange')]
+
+		Afr_ax1.legend(leg,['Raw Npart', 'HI mass weighted', '50$^{th}$ percentile', '90$^{th}$ percentile'])
+
+		plt.show()
+
+		figname = '{basedir}/figures/sym_Npart_HI_percentiles.png'.format(basedir=basedir)
+		Afrfig.savefig(figname, dpi = 200)
+		plt.close()
+
+	
 
 	else:
 	
 		if rank == 0:
 			filename = '{dir}TNG_{ID}'.format(dir = basedir, ID=ID)
 			gas_coordinates, gas_velocities, HI_masses = read_TNG(filename)
+			# print(np.median(HI_masses))
+			# plt.hist(np.log10(HI_masses))
+			# plt.show()
+			# exit()
 		else:
 			HI_masses = np.array([])
 			gas_coordinates = np.array([])
@@ -1022,11 +1180,11 @@ def resolution_test_TNG():
 		# exit()
 
 
-		phi_list = [0,45,90]
-		theta_list = [90,50,20]
+		phi_list = [74.8,53.48,7.06]
+		theta = 90
+
 		Npart_list = [50, 70, 100, 200, 500, 700, 1000, 2000, 5000, 7000, 10000, 14000]
-		Afr_list = np.zeros([len(Npart_list),Nsamp,len(phi_list)*len(theta_list),2])
-		# Afr_med_errs = np.zeros([len(Npart_list),len(phi_list)*len(theta_list),2])
+		Afr_list = np.zeros([len(Npart_list),Nsamp,3,2])
 
 		for nn in range(len(Npart_list)):
 			Npart = Npart_list[nn]
@@ -1037,45 +1195,42 @@ def resolution_test_TNG():
 			HI_masses_temp = comm.bcast(HI_masses_temp, root=0)
 
 			for pp in range(len(phi_list)):
-				for tt in range(len(theta_list)):
-					phi = phi_list[pp]
-					theta = theta_list[tt]
-					print(phi,theta)
-					if rank == 0:
-						gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
-						gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
-					else:
-						gas_coords_temp = None
-						gas_vel_temp = None
+				phi = phi_list[pp]
+				if rank == 0:
+					gas_coords_temp = calc_coords_obs(gas_coordinates,phi,theta)
+					gas_vel_temp = calc_vel_obs(gas_velocities,phi,theta)
+				else:
+					gas_coords_temp = None
+					gas_vel_temp = None
 
-					gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
-					gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
+				gas_coords_temp = comm.bcast(gas_coords_temp, root=0)
+				gas_vel_temp = comm.bcast(gas_vel_temp, root=0)
 
-					vel, spectrum = calc_spectrum(gas_coords_temp,gas_vel_temp,HI_masses_temp,beamsize = 40)
+				vel, spectrum = calc_spectrum(gas_coords_temp, gas_vel_temp, HI_masses_temp, beamsize = 40)
 
-					Peaklocs = locate_peaks(spectrum)
-					# print(Peaklocs)
-					Peaks = [spectrum[Peaklocs[0]],spectrum[Peaklocs[1]]]
-					widths = locate_width(spectrum, Peaks, 0.2)
+				Peaklocs = locate_peaks(spectrum)
+				# print(Peaklocs)
+				Peaks = [spectrum[Peaklocs[0]],spectrum[Peaklocs[1]]]
+				widths = locate_width(spectrum, Peaks, 0.2)
+				Sint, Afr_true = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+				# print(Afr_true)
 
-					# plt.plot(spectrum)
-					# plt.plot([Peaklocs[0],Peaklocs[0]],[0,np.max(spectrum)])
-					# plt.plot([Peaklocs[1],Peaklocs[1]],[0,np.max(spectrum)])
-					# plt.show()
-					# exit()
+				# plt.plot(spectrum)
+				# plt.plot([Peaklocs[0],Peaklocs[0]],[0,np.max(spectrum)])
+				# plt.plot([Peaklocs[1],Peaklocs[1]],[0,np.max(spectrum)])
+				# plt.show()
 
-					for ss in range(rank,Nsamp,nproc):
-						particle_sample = nprand.choice(range(len(HI_masses)), Npart)
-							
-						vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
-						gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
-
-						Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
-						Afr_list[nn,ss,pp*len(phi_list)+tt,0] = Afr
-						Afr_list[nn,ss,pp*len(phi_list)+tt,1] = Sint
+				for ss in range(rank,Nsamp,nproc):
+					particle_sample = nprand.choice(range(len(HI_masses)), Npart)
+						
+					vel, spectrum = calc_spectrum(gas_coords_temp[particle_sample,:], 
+					gas_vel_temp[particle_sample], HI_masses_temp[particle_sample], beamsize = 40)
+					Sint, Afr = areal_asymmetry(spectrum, widths, np.abs(np.diff(vel)[0]))
+					Afr_list[nn,ss,pp,0] = Afr
+					Afr_list[nn,ss,pp,1] = Sint
 		Afr_list.flatten()
-		np.savetxt('{dir}/data/restest{ID}_proc{rank}.dat'.format(dir=basedir,ID=ID, rank=rank), 
-			Afr_list.reshape(len(Npart_list),1000*len(phi_list)*len(theta_list)*2))
+		np.savetxt('{dir}/data/restest{ID}_proc{rank}_Afrset.dat'.format(dir=basedir,ID=ID, rank=rank), 
+			Afr_list.reshape(len(Npart_list),Nsamp*3*2))
 
 		comm.Barrier()			
 

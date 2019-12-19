@@ -5,7 +5,11 @@ import matplotlib.gridspec as gridspec
 import galread_ARHS as gr 
 from astropy.table import Table
 from mpi4py import MPI
+from scipy.optimize import curve_fit
+import dist_sampling_DAGJK as dsd
 
+
+## some measurements
 
 def add_extended_measurements():
 
@@ -59,7 +63,6 @@ def split_TNGdata():
 	# np.savetxt('/media/data/simulations/IllustrisTNG/TNG100-2_spectra_mock.dat',spectra_mock)
 	np.savetxt('/media/data/simulations/IllustrisTNG/TNG100-3_spectra_true.dat',spectra_true)
 	print(galdata)
-
 
 
 def remeasure_Afr():
@@ -272,7 +275,6 @@ def measure_TNG_spectra():
 
 		data.write('{}_galdata_measured.ascii'.format(base),format='ascii')
 
-
 def plot_Afr_env():
 
 	particle_mass = 2.e6
@@ -323,11 +325,13 @@ def plot_Afr_env():
 	exit()
 
 
+#resoltuion test stuff 
+
 def resolution_completeness_sSFR():
 
 	particle_mass = 1.4e6
 
-	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100-2_galdata_measured_v2.ascii',format='ascii')
 	data = data[data['fit_success'] == 0]
 
 	data['mass_stars'] = np.log10(data['mass_stars'])
@@ -338,8 +342,8 @@ def resolution_completeness_sSFR():
 	# exit()
 
 
-	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
-	unresolved_asym = np.where((data['Sint']/particle_mass < 1.e3))[0]
+	resolved_asym = np.where((data['Sint']/particle_mass >= 5.e2))[0]
+	unresolved_asym = np.where((data['Sint']/particle_mass < 5.e2))[0]
 
 	print(len(resolved_asym))
 	print(len(unresolved_asym))
@@ -366,24 +370,28 @@ def resolution_completeness_sSFR():
 			else:
 				compl_grid[ss,mm] = len(inbin_res) / len(inbin)
 
+	fig = plt.figure(figsize=(12,8))
+	gs = gridspec.GridSpec(1,1, top=0.99, left = 0.1, right=0.99, bottom=0.1) 
+	ax = fig.add_subplot(gs[0,0])
+	ax.set_ylabel(' $\log_{10}$ sSFR [yr$^{-1}$]',fontsize = 16)
+	ax.set_xlabel('$\log_{10}$ $M_{\star}$ [M$_{\odot}$]',fontsize = 16)
+	ax.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 16,length = 8, width = 1.25)
+	ax.tick_params(axis = 'both', which = 'minor', direction = 'in', labelsize = 16,length = 4, width = 1.25)
 
+	aa = ax.pcolormesh(mstar_bins,SFR_bins,compl_grid)
+	fig.colorbar(aa)
 
+	ax.contour(mstar_bins[0:-1],SFR_bins[0:-1],compl_grid,levels=[0.5],**{'linewidths':3,'colors':'Black'})
 
-	plt.pcolormesh(mstar_bins,SFR_bins,compl_grid)
-	plt.colorbar()
+	ax.plot([9,12.5],[-0.344*(9-9) - 9.822, -0.344*(12.5-9) - 9.822],ls = '--',color='Red',linewidth=2)
+	ax.plot([9,12.5],[-0.344*(9-9) - 9.822 - (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 - (0.088*(12.5-9) + 0.188)],ls = ':',color='Red',linewidth=2)
+	ax.plot([9,12.5],[-0.344*(9-9) - 9.822 + (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 + (0.088*(12-9) + 0.188)],ls = ':',color='Red',linewidth=2)
 
-	plt.contour(mstar_bins[0:-1],SFR_bins[0:-1],compl_grid,levels=[0.5],**{'linewidths':3,'colors':'Black'})
+	fig.savefig('/media/data/simulations/IllustrisTNG/figures/TNG100-2_sSFR_comp.png')
 
-	plt.plot([9,12.5],[-0.344*(9-9) - 9.822, -0.344*(12.5-9) - 9.822],ls = '--',color='Red',linewidth=2)
-	plt.plot([9,12.5],[-0.344*(9-9) - 9.822 - (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 - (0.088*(12.5-9) + 0.188)],ls = ':',color='Red',linewidth=2)
-	plt.plot([9,12.5],[-0.344*(9-9) - 9.822 + (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 + (0.088*(12-9) + 0.188)],ls = ':',color='Red',linewidth=2)
-
-	plt.xlabel('log10 Stellar mass')
-	plt.ylabel('log10 SFR')
-	plt.title('TNG100 fraction of HI asymmetry resolved galaxies (contour = 0.6)')
 	plt.show()
 
-	# exit()
+	exit()
 
 	all_grid = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
 	for mm in range(len(mstar_bins)-1):
@@ -509,10 +517,11 @@ def resolution_completeness_ratio():
 
 	particle_mass = 1.4e6
 
-	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100-3_galdata_measured_v2.ascii',format='ascii')
+	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
 	data['mass_stars'] = np.log10(data['mass_stars'])
 	data['SFR'] = np.log10(data['SFR']) - data['mass_stars']
-	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
+	data = data[data['fit_success']==0]
+	resolved_asym = np.where((data['Sint']/particle_mass >= 5.e2))[0]
 	mstar_bins = np.arange(9,13,0.1)
 	SFR_bins = np.arange(-15,-8,0.1)
 	compl_grid_1 = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
@@ -539,7 +548,8 @@ def resolution_completeness_ratio():
 	data = Table.read('/media/data/simulations/IllustrisTNG/TNG100-2_galdata_measured_v2.ascii',format='ascii')
 	data['mass_stars'] = np.log10(data['mass_stars'])
 	data['SFR'] = np.log10(data['SFR']) - data['mass_stars']
-	resolved_asym = np.where((data['Sint']/particle_mass >= 1.e3))[0]
+	data = data[data['fit_success']==0]
+	resolved_asym = np.where((data['Sint']/particle_mass >= 5.e2))[0]
 	mstar_bins = np.arange(9,13,0.1)
 	SFR_bins = np.arange(-15,-8,0.1)
 	compl_grid_2 = np.zeros([len(SFR_bins)-1,len(mstar_bins)-1])
@@ -566,21 +576,29 @@ def resolution_completeness_ratio():
 	compl_ratio = compl_grid_1 / compl_grid_2
 	compl_ratio[compl_ratio > 1] = 1.e0/ compl_ratio[compl_ratio>1]
 
+	fig = plt.figure(figsize=(12,8))
+	gs = gridspec.GridSpec(1,1, top=0.99, left = 0.1, right=0.99, bottom=0.1) 
+	ax = fig.add_subplot(gs[0,0])
+	ax.set_ylabel(' $\log_{10}$ sSFR [yr$^{-1}$]',fontsize = 16)
+	ax.set_xlabel('$\log_{10}$ $M_{\star}$ [M$_{\odot}$]',fontsize = 16)
+	ax.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 16,length = 8, width = 1.25)
+	ax.tick_params(axis = 'both', which = 'minor', direction = 'in', labelsize = 16,length = 4, width = 1.25)
 
-	plt.pcolormesh(mstar_bins,SFR_bins,compl_ratio)
-	plt.colorbar()
 
-	plt.contour(mstar_bins[0:-1],SFR_bins[0:-1],compl_ratio,levels=[0.8],**{'linewidths':3,'colors':'Black'})
-	plt.xlabel('log10 Stellar mass')
-	plt.ylabel('log10 SFR')
-	plt.title('TNG100-3 / TNG100-2 completness ratio')
+	aa=ax.pcolormesh(mstar_bins,SFR_bins,compl_ratio)
+	fig.colorbar(aa)
+
+	ax.contour(mstar_bins[0:-1],SFR_bins[0:-1],compl_ratio,levels=[0.8],**{'linewidths':3,'colors':'Black'})
+	
+	ax.plot([9,12.5],[-0.344*(9-9) - 9.822, -0.344*(12.5-9) - 9.822],ls = '--',color='Red',linewidth=2)
+	ax.plot([9,12.5],[-0.344*(9-9) - 9.822 - (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 - (0.088*(12.5-9) + 0.188)],ls = ':',color='Red',linewidth=2)
+	ax.plot([9,12.5],[-0.344*(9-9) - 9.822 + (0.088*(9-9) + 0.188), -0.344*(12.5-9) - 9.822 + (0.088*(12-9) + 0.188)],ls = ':',color='Red',linewidth=2)
+
+
+	fig.savefig('/media/data/simulations/IllustrisTNG/figures/TNG100TNG100-2_complratio.png')
 	plt.show()
 
 	exit()
-
-
-
-
 
 
 	resolved = np.where((data['Sint']/particle_mass > 1.e3) & (data['mass_stars']/particle_mass > 1.e3))
@@ -601,9 +619,9 @@ def compare_Afrhist_TNGboxes():
 	TNG100_3 = Table.read('/media/data/simulations/IllustrisTNG/TNG100-3_galdata_measured_v2.ascii',format='ascii')
 
 
-	TNG100 = TNG100[np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]]
-	TNG100_2 = TNG100_2[np.where((TNG100_2['Sint']/particle_mass >= 1.e3))[0]]
-	TNG100_3 = TNG100_3[np.where((TNG100_3['Sint']/particle_mass >= 1.e3))[0]]
+	TNG100['Npart'] = TNG100['Sint']/particle_mass
+	TNG100_2['Npart'] = TNG100_2['Sint']/particle_mass 
+	TNG100_3['Npart'] = TNG100_3['Sint']/particle_mass
 
 
 	# plt.hist(np.log10(TNG100['mass_stars']),bins=15,alpha=0.6,density=True)
@@ -612,54 +630,110 @@ def compare_Afrhist_TNGboxes():
 	# plt.ylabel('Histogram Density')
 	# plt.show()
 
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['sSFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
 
-	TNG100TNG1002 = False
+	TNG100_2['mass_stars'] = np.log10(TNG100_2['mass_stars'])
+	TNG100_2['sSFR'] = np.log10(TNG100_2['SFR']) - TNG100_2['mass_stars']
+
+
+	TNG100_3['mass_stars'] = np.log10(TNG100_3['mass_stars'])
+	TNG100_3['sSFR'] = np.log10(TNG100_3['SFR']) - TNG100_3['mass_stars']
+
+
+
+
+	TNG100TNG1002 = True
+	TNG1002TNG1003 = False
+	TNG100TNG1003 = False
+
+
 	if TNG100TNG1002:
 		
-		plt.hist(np.log10(TNG100['mass_stars']),bins=15,alpha=0.6,density=True)
-		plt.hist(np.log10(TNG100_2['mass_stars']),bins=15,alpha=0.4,density=True)
+		plt.hist(TNG100['mass_stars'],bins=15,alpha=0.6,density=True)
+		plt.hist(TNG100_2['mass_stars'],bins=15,alpha=0.4,density=True)
 		plt.xlabel('lgMstar')
 		plt.ylabel('Histogram Density')
 		plt.show()
 
-		TNG100 = TNG100[np.where((np.log10(TNG100['mass_stars'])<9.8) & (np.log10(TNG100['mass_stars'])> 9.3) 
-					& (np.log10(TNG100['SFR'] / TNG100['mass_stars']) > -10.1 ) & (np.log10(TNG100['SFR'] / TNG100['mass_stars']) < -9.6 ))[0]]
-		TNG100_2 = TNG100_2[np.where((np.log10(TNG100_2['mass_stars'])<9.8) & (np.log10(TNG100_2['mass_stars'])> 9.3) 
-					& (np.log10(TNG100_2['SFR'] / TNG100_2['mass_stars']) > -10.1) & (np.log10(TNG100_2['SFR'] / TNG100_2['mass_stars']) < -9.6)) [0]]
 
-		TNG100_cent = np.where(TNG100['Type'] <= 0)[0]
-		TNG100_sat = np.where(TNG100['Type'] == 1)[0]
+		lgMstar_low = 10
+		lgMstar_high = 10.5
 
-		TNG100_2_cent = np.where(TNG100_2['Type'] <= 0)[0]
-		TNG100_2_sat = np.where(TNG100_2['Type'] == 1)[0]
+		sSFR_low = -10.5
+		sSFR_high = -8
 
 
+
+		TNG100 = TNG100[np.where( (TNG100['mass_stars'] < lgMstar_high) & (TNG100['mass_stars']> lgMstar_low) 
+					& (TNG100['sSFR'] > sSFR_low) & (TNG100['sSFR']  < sSFR_high ))[0]]
+
+		TNG100_2 = TNG100_2[np.where( (TNG100_2['mass_stars'] < lgMstar_high) & (TNG100_2['mass_stars']> lgMstar_low) 
+					& (TNG100_2['sSFR'] > sSFR_low) & (TNG100_2['sSFR']  < sSFR_high ))[0]]
+
+		TNG100 = TNG100[(TNG100['Npart'] > 5.e2)]
+		TNG100_2 = TNG100_2[(TNG100_2['Npart'] >5.e2)]
+
+
+		TNG100_cent = TNG100[TNG100['Type'] != 1]
+		TNG100_sat = TNG100[TNG100['Type'] == 1]
+
+		TNG100_2_cent = TNG100_2[TNG100_2['Type'] != 1]
+		TNG100_2_sat = TNG100_2[TNG100_2['Type'] == 1]
+		
+		plt.hist(np.log10(TNG100_sat['Npart']),bins=15,alpha=0.6,density=True)
+		plt.hist(np.log10(TNG100_cent['Npart']),bins=15,alpha=0.4,density=True)
+		plt.xlabel('lgNpart')
+		plt.ylabel('Histogram Density')
+		plt.show()
 
 
 		fig = plt.figure(figsize = (10,8))
 		gs = gridspec.GridSpec(2, 1, top = 0.9, right = 0.98, bottom  = 0.08, left = 0.08)
 		axes_1 = fig.add_subplot(gs[0,0])
-		axes_1.hist(TNG100['Afr'][TNG100_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_cent)))
-		axes_1.hist(TNG100['Afr'][TNG100_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_sat)))
-		# axes_1.set_xlabel('Asymmetry measure A$_{fr}$')
+		axes_2 = fig.add_subplot(gs[1,0],sharex = axes_1,sharey = axes_1)
 		axes_1.set_ylabel('Cumulative Histogram Density')
-		axes_1.legend()
-
-		axes_2 = fig.add_subplot(gs[1,0])
-		axes_2.hist(TNG100_2['Afr'][TNG100_2_cent],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Green',histtype='step',label='Centrals ({})'.format(len(TNG100_2_cent)))
-		axes_2.hist(TNG100_2['Afr'][TNG100_2_sat],bins=np.arange(1,2.5,0.01),density=True,cumulative=True,color='Orange',histtype='step',label='Satellites ({})'.format(len(TNG100_2_sat)))
-		axes_2.set_xlabel('Asymmetry measure A$_{fr}$')
 		axes_2.set_ylabel('Cumulative Histogram Density')
-		axes_2.legend()
+		axes_2.set_xlabel('Asymmetry measure A$_{fr}$')
 
-		fig.suptitle('TNG100 & TNG100-2  lgMstar = [9.3,9.8] sSFR = [-10.1,-9.6]',fontsize = 15)
+
+		names = ['Satellites ({})'.format(len(TNG100_sat)), 'Centrals ({})'.format(len(TNG100_cent))]
+
+
+		Afr_bins = np.arange(1,2.5,0.05)
+		Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+		Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+		samples = [TNG100_sat['Afr'],TNG100_cent['Afr']]
+		controls = [np.log10(TNG100_sat['Npart']),np.log10(TNG100_cent['Npart'])]
+
+		samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+								dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+
+		dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+			 axis = axes_1, names=names)
+		# axes_1.legend()
+
+		names = ['Satellites ({})'.format(len(TNG100_2_sat)), 'Centrals ({})'.format(len(TNG100_2_cent))]
+
+		samples = [TNG100_2_sat['Afr'],TNG100_2_cent['Afr']]
+		controls = [np.log10(TNG100_2_sat['Npart']),np.log10(TNG100_2_cent['Npart'])]
+
+		samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+								dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+
+		dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+			axis = axes_2, names=names)
+
+		# axes_2.legend()
+
+		# fig.suptitle('TNG100 & TNG100-2  lgMstar = [9.,9.8] sSFR = [-10.1,-9.6]',fontsize = 15)
 
 
 		plt.show()
 		exit()
 
 
-	TNG1002TNG1003 = True
 	if TNG1002TNG1003:
 		
 
@@ -704,7 +778,6 @@ def compare_Afrhist_TNGboxes():
 		exit()
 
 
-	TNG100TNG1003 = True
 	if TNG100TNG1003:
 		
 		plt.hist(np.log10(TNG100['mass_stars']),bins=15,alpha=0.6,density=True)
@@ -746,83 +819,6 @@ def compare_Afrhist_TNGboxes():
 
 		plt.show()
 		exit()
-
-def compare_asymmetry_halomass():
-
-
-	particle_mass = 1.4e6
-
-	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
-
-	TNG100 = TNG100[np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]]
-
-	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
-	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
-	TNG100['SFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
-
-
-	plt.hist(TNG100['mass_halo'][(TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars']< 11.5)],bins=20)
-	plt.xlabel('log10 Halo mass')
-	plt.ylabel('Histogram Count')
-	plt.show()
-	# exit()
-
-	massrange_1 = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11))[0]
-	massrange_2 = np.where((TNG100['mass_stars'] > 11) & (TNG100['mass_stars'] <= 11.5))[0]
-
-	
-	print('Ncen', len(TNG100[(TNG100['mass_stars'] > 10.) & (TNG100['mass_stars'] < 11.5) & (TNG100['Type'] < 1)] ))
-	print('Nsat', len(TNG100[(TNG100['mass_stars'] > 10.) & (TNG100['mass_stars'] < 11.5) & (TNG100['Type']  == 1)]))
-
-	fig = plt.figure(figsize = (10,8))
-
-	gs = gridspec.GridSpec(2, 1, top = 0.95, right = 0.98, bottom  = 0.12, left = 0.08)
-
-	ax1 = fig.add_subplot(gs[0,0])
-	ax2 = fig.add_subplot(gs[1,0])
-
-	ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
-
-
-	massranges = [massrange_1,massrange_2]
-	axes = [ax1,ax2]
-
-	ax1.set_title('lgMstar = (10.5,11]',fontsize=10)
-	ax2.set_title('lgMstar = (11,11.5]',fontsize=10)
-	ax2.set_xlabel('Asymmetry measure A$_{fr}$')
-
-	for ii in range(len(massranges)):
-
-		TNG_samp = TNG100[massranges[ii]]
-
-		lowmass = np.where((TNG_samp['mass_halo'] > 11) & (TNG_samp['mass_halo'] <= 12))[0]
-		medmass = np.where((TNG_samp['mass_halo'] > 12) & (TNG_samp['mass_halo'] <= 12.5))[0]
-		highmass = np.where((TNG_samp['mass_halo'] > 12.5) & (TNG_samp['mass_halo'] <= 13.5))[0]
-		bigmass = np.where((TNG_samp['mass_halo'] > 13.5))
-
-		axes[ii].set_ylabel('Histogram Density')
-
-		axes[ii].hist(TNG_samp['Afr'][lowmass],bins=np.arange(1,2.5,0.01),density=True,
-			cumulative=True,color='Purple',histtype='step',label = 'M_$h$ = (11,12] ({})'.format(len(TNG_samp['Afr'][lowmass])))
-		
-
-		axes[ii].hist(TNG_samp['Afr'][medmass],bins=np.arange(1,2.5,0.01),density=True,
-			cumulative=True,color='Orange',histtype='step',label = 'M_$h$ = (12,12.5] ({})'.format(len(TNG_samp['Afr'][medmass])))
-		
-		axes[ii].hist(TNG_samp['Afr'][highmass],bins=np.arange(1,2.5,0.01),density=True,
-			cumulative=True,color='Green',histtype='step',label = 'M_$h$ = (12.5,13.5] ({})'.format(len(TNG_samp['Afr'][highmass])))
-		
-		# axes[ii].hist(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']<1],bins=np.arange(1,2.5,0.01),density=True,
-			# cumulative=True,color='Green',histtype='step',label = 'M_$h$ = (12,13] ({})'.format(len(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']<1])))
-		# axes[ii].hist(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']==1],bins=np.arange(1,2.5,0.01),ls = '--',density=True,
-		# 	cumulative=True,color='Green',histtype='step',label = 'M_$h$ = (12,13] ({})'.format(len(TNG_samp['Afr'][highmass][TNG_samp[highmass]['Type']==1])))
-		
-
-		axes[ii].hist(TNG_samp['Afr'][bigmass],bins=np.arange(1,2.5,0.01),density=True,
-			cumulative=True,color='Red',histtype='step',label = 'M_$h$ > 13.5 ({})'.format(len(TNG_samp['Afr'][bigmass])))
-		axes[ii].legend()
-	plt.show()
-	exit()
 
 def compare_Afrhist_Npart():
 	particle_mass = 1.4e6
@@ -869,6 +865,9 @@ def compare_Afrhist_Npart():
 	fig.suptitle('lgMstar>10.5',fontsize=18)
 	fig.savefig('./data/test12.png')
 
+
+
+######## visual checking stuff
 
 def check_highmass_SFgals():
 	particle_mass = 1.4e6
@@ -935,6 +934,7 @@ def check_highmass_SFgals():
 
 			else:
 				compl_grid[ss,mm] = len(inbin_res) / len(inbin)
+
 
 def plot_selected_spectra():
 	
@@ -1068,6 +1068,7 @@ def compare_asym_gasfraction():
 	fig.savefig('./figures/ITNG_Afr_lgGF_3.png')
 	plt.show()
 
+
 def gas_spatial_distribution():
 
 	import pickle
@@ -1147,74 +1148,864 @@ def gas_spatial_distribution():
 		# plt.show()
 		cbar.set_label('log10 HI mass',rotation=270)
 		fig.savefig('./figures/ITNG_{id}_ALIGNspatial_edgeon_HImass.png'.format(id=ID))
-		
 
-
+def plot_disturbed_satellites():
 	
-
-
-def Afr_halo_phasespace():
-
 	particle_mass = 1.4e6
 	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
 	
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
 	good = np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]
 
-	Rvir = np.cbrt(np.array(TNG100['mass_halo'])* 4.3e-3 / (100 * 70*70 * 1.e-6 * 1.e-6) )*1.e-6
+	TNG100['Rvir'] = np.cbrt(np.array(TNG100['mass_halo'])* 4.3e-3 / (100 * 70 * 70 * 1.e-6 * 1.e-6) )*1.e-6
 	# exit()
 	pos = ['pos_rel_x','pos_rel_y','pos_rel_z']
 	vel = ['vel_rel_x','vel_rel_y','vel_rel_z']
 
-	# pos = ['pos_rel_x','pos_rel_y']
 
-	# vel = ['vel_rel_z']
+	TNG100['rad'] = np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
+	TNG100['vrel'] = np.sqrt(np.nansum((np.array([TNG100[v] for v in vel]).T)**2.e0, axis=1))
 
 
-	# print(TNG100)
-	# exit()
 
-	rad = np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
-	vrel = np.sqrt(np.nansum((np.array([TNG100[v] for v in vel]).T)**2.e0, axis=1))
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
+	TNG100['sSFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+	lowmass = np.where((TNG100['Npart'] > 5.e2) & 
+			(TNG100['mass_halo'] < 12)  & (TNG100['mass_halo'] > 11.4)  &
+			(TNG100['rad']*1.e-3 < TNG100['Rvir']) &
+			(TNG100['Afr'] > 1.5) & 
+			(TNG100['Type'] == 1))[0]
+
+	highmass = np.where((TNG100['Npart'] > 5.e2) & 
+			(TNG100['mass_halo'] > 13)  &
+			(TNG100['rad']*1.e-3 < TNG100['Rvir']) &
+			(TNG100['Afr'] > 1.5) &
+			(TNG100['Type'] == 1))[0]
+
+	lowmass = lowmass[np.argsort(TNG100['Afr'][lowmass])]
+	highmass = highmass[np.argsort(TNG100['Afr'][highmass])]
 	
-	grp_sigma = np.zeros(len(TNG100))
-	for grp in np.array(np.unique(TNG100['groupnr'])):
-		ingrp = np.where(TNG100['groupnr'] == grp)[0]
-		if len(ingrp) > 4:
-			grp_sigma[ingrp] = np.std(vrel[ingrp][vrel[ingrp] != 0])
-		else:
-			grp_sigma[ingrp] = -1
 
-	# rad = rad[good]
-	# Rvir = Rvir[good]
-	# vrel = vrel[good]
-	# grp_sigma = grp_sigma[good]
+	IDs_list = [lowmass,highmass]
 
+	spectra = np.loadtxt('/media/data/simulations/IllustrisTNG/TNG100_spectra_true.dat')
+	vel = spectra[:,0]
+	spectra = spectra[:,1::]
+	for ii in range(2):
+		IDs = IDs_list[ii]
+		for ID in IDs:
+			spectrum = spectra[:,ID]
+			# print(ID,TNG100['mass_stars'][ID],TNG100['Afr'][ID],TNG100['Type'][ID], len(np.where(TNG100['groupnr'] == TNG100['groupnr'][ID])[0]))
+			fig, ax = plt.subplots()
+			ax.plot(vel,spectrum,color='Black')
 
-	rad = rad[grp_sigma != -1]
-	Rvir = Rvir[grp_sigma != -1]
-	vrel = vrel[grp_sigma != -1]
-	grp_sigma = grp_sigma[grp_sigma != -1]
-
-	print(len(rad))
+			vel_peak_L = vel[int(TNG100['PeaklocL'][ID])]
+			vel_peak_R = vel[int(TNG100['PeaklocR'][ID])]
+			vel_w20_L = np.interp(TNG100['w20L'][ID],np.arange(len(vel)),vel)
+			vel_w20_R = np.interp(TNG100['w20R'][ID],np.arange(len(vel)),vel)
 
 
-	# for ii in range(len(np.where(vrel/grp_sigma == 2)[0])):
-	# 	grpnr = TNG100[np.where(vrel/grp_sigma == 2)[0]]['groupnr'][ii]
-	# 	print(grpnr)
-	# 	print(len(np.where(TNG100['groupnr'] == grpnr)[0]))
-	# 	print(vrel[TNG100['groupnr'] == grpnr])
-	# 	print(np.std(vrel[TNG100['groupnr'] == grpnr]))
-	# 	print(np.std(vrel[np.where(vrel/grp_sigma == 2)[0]]))
-	# 	exit()	
+			ax.plot([vel_peak_L,vel_peak_L],[0,np.max(spectrum)],color = 'red')
+			ax.plot([vel_peak_R,vel_peak_R],[0,np.max(spectrum)],color = 'red')
+			ax.plot([vel_w20_L,vel_w20_L],[0,np.max(spectrum)],color='Blue',ls='--')
+			ax.plot([vel_w20_R,vel_w20_R],[0,np.max(spectrum)],color='Blue',ls='--')
+			ax.set_xlabel('Velocity')
+			ax.set_ylabel('HI mass kms$^{-1}$')
+			ax.text(0.1,0.9,'Afr = {afr:.3f}'.format(afr=TNG100['Afr'][ID]),fontsize=12, transform=ax.transAxes)
+			if ii == 0:	
+				fig.savefig('/media/data/simulations/IllustrisTNG/figures/lowMh/ITNG_{id}_spectrum_Afr{a:.2f}.png'.format(id=ID,a=TNG100['Afr'][ID]))
+			else:
+				fig.savefig('/media/data/simulations/IllustrisTNG/figures/highMh/ITNG_{id}_spectrum_Afr{a:.2f}.png'.format(id=ID,a=TNG100['Afr'][ID]))
 
-	# print(TNG100[np.where(vrel/grp_sigma == 2)[0]])
-	# print(grp_sigma[np.where(vrel/grp_sigma == 2)[0]])
-	# print(vrel[np.where(vrel/grp_sigma == 2)[0]])
+			plt.close()
+
+
+	exit()
+
+def plot_TNG100_TN100_2():
+	
+	base = '/media/data/simulations/IllustrisTNG/TNG100-2'
+
+	particle_mass = 1.4e6
+	TNG = Table.read('{}_galdata_measured_v2.ascii'.format(base),format='ascii')
+	
+	TNG['Npart'] = TNG['Sint'] / particle_mass
+
+	TNG['mass_stars'] = np.log10(TNG['mass_stars'])
+	TNG['mass_halo'] = np.log10(TNG['mass_halo'])
+	TNG['sSFR'] = np.log10(TNG['SFR']) - TNG['mass_stars']
+
+
+	lgMstar_low = 9.0
+	lgMstar_high = 9.5
+
+	sSFR_low = -10.5
+	sSFR_high = -9.8
+
+
+	gals = np.where((TNG['Npart'] > 5.e2) & 
+			(TNG['mass_stars'] < lgMstar_high) & (TNG['mass_stars']> lgMstar_low)  &
+			(TNG['sSFR'] > sSFR_low) & (TNG['sSFR']  < sSFR_high ) )[0]
+
+	# print(TNG)
+
+	savedir = '/'.join(base.split('/')[0:-1]) + '/figures/' + base.split('/')[-1]
+
+
+	spectra = np.loadtxt('{}_spectra_true.dat'.format(base))
+	vel = spectra[:,0]
+	spectra = spectra[:,1::]
+	for ID in gals:
+		spectrum = spectra[:,ID]
+		# print(ID,TNG100['mass_stars'][ID],TNG100['Afr'][ID],TNG100['Type'][ID], len(np.where(TNG100['groupnr'] == TNG100['groupnr'][ID])[0]))
+		fig, ax = plt.subplots()
+		ax.plot(vel,spectrum,color='Black')
+
+		vel_peak_L = vel[int(TNG['PeaklocL'][ID])]
+		vel_peak_R = vel[int(TNG['PeaklocR'][ID])]
+		vel_w20_L = np.interp(TNG['w20L'][ID],np.arange(len(vel)),vel)
+		vel_w20_R = np.interp(TNG['w20R'][ID],np.arange(len(vel)),vel)
+
+
+		ax.plot([vel_peak_L,vel_peak_L],[0,np.max(spectrum)],color = 'red')
+		ax.plot([vel_peak_R,vel_peak_R],[0,np.max(spectrum)],color = 'red')
+		ax.plot([vel_w20_L,vel_w20_L],[0,np.max(spectrum)],color='Blue',ls='--')
+		ax.plot([vel_w20_R,vel_w20_R],[0,np.max(spectrum)],color='Blue',ls='--')
+		ax.set_xlabel('Velocity')
+		ax.set_ylabel('HI mass kms$^{-1}$')
+		ax.text(0.1,0.9,'Afr = {afr:.3f}'.format(afr=TNG['Afr'][ID]),fontsize=12, transform=ax.transAxes)
+	
+		fig.savefig('{savedir}/ITNG_{id}_spectrum_Afr{a:.2f}.png'.format(savedir=savedir,id=ID,a=TNG['Afr'][ID]))
+		
+		plt.close()
+
+
+	exit()
+
+
+
+
+
+#halo and environment stuff
+
+def Afr_satellites_Rvir_sSFR():
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
+
+	TNG100['Rvir'] = np.cbrt(np.array(TNG100['mass_halo'])* 4.3e-3 / (100 * 70*70 * 1.e-6 * 1.e-6) )*1.e-6
+	TNG100['V200'] = np.sqrt(4.3e-3 * TNG100['mass_halo'] / (TNG100['Rvir']*1.e6))
+
+	TNG100['sSFR'] = np.log10(TNG100['SFR']) - np.log10(TNG100['mass_stars'])
 	# exit()
+	pos = ['pos_rel_x','pos_rel_y','pos_rel_z']
+	vel = ['vel_rel_x','vel_rel_y','vel_rel_z']
 
-	plt.scatter(rad*1.e-3/Rvir, vrel/grp_sigma,s=2)
+
+	TNG100['rad'] = np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
+
+
+	TNG100['vrad'] = np.nansum(np.array([TNG100[p] for p in pos]).T * np.array([TNG100[v] for v in vel]).T, axis=1) /\
+						np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
+
+	sats = TNG100[(TNG100['Type'] == 1) & (TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] < 1.e12)]
+
+	sats_inside = sats[sats['rad']*1.e-3 < sats['Rvir']]
+	sats_outside = sats[sats['rad']*1.e-3 > sats['Rvir']]
+
+
+	asym_sats_inside = sats_inside[(sats_inside['Afr']>1.4)]
+
+	plt.hist(asym_sats_inside['sSFR'],bins=np.arange(-12,-8,0.25),alpha=0.5,density=True)
+	plt.hist(sats_outside['sSFR'],bins=np.arange(-12,-8,0.25),alpha=0.5,density=True)
 	plt.show()
 
+def Afrhist_satellites_centrals():
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
+	# exit()
+	pos = ['pos_rel_x','pos_rel_y','pos_rel_z']
+	vel = ['vel_rel_x','vel_rel_y','vel_rel_z']
+
+
+	TNG100['rad'] = np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
+	TNG100['vrel'] = np.sqrt(np.nansum((np.array([TNG100[v] for v in vel]).T)**2.e0, axis=1))
+
+
+	
+	TNG100 = TNG100[(TNG100['Npart'] > 5.e2)]
+
+	sats = TNG100[TNG100['Type'] == 1]
+	cents = TNG100[TNG100['Type'] != 1]
+
+
+	samples = [sats['Afr'],cents['Afr']]
+	controls = [np.log10(sats['Npart']),np.log10(cents['Npart'])]
+	names = ['Satellites ({})'.format(len(sats)), 'Centrals ({})'.format(len(cents))]
+
+	Afr_bins = np.arange(1,2.5,0.05)
+	Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+	Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+	
+
+	samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+								dsd.control_samples(samples,Afr_bins,controls,Npart_bins,Niter=100)
+
+	dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+			 names=names,save='/media/data/simulations/IllustrisTNG/figures/TNG_Afrhist_sat_cen_2.png')
+
+	# dsd.plot_compare_DAGJK_Nsamp_sigmas(samples_all_DAGJKsigma, samples_all_hists, Afr_bins, names=names, save=
+		# '/media/data/simulations/IllustrisTNG/figures/sigma_hist_sat_cent.png')
+
+	# fig.savefig('/media/data/simulations/IllustrisTNG/figures/TNG_Afrhist_sat_cen.png')
+	plt.show()
+	exit()
+
+def compare_asymmetry_halomass():
+
+	particle_mass = 1.4e6
+
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
+	TNG100['sSFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+	Afr_bins = np.arange(1,2.5,0.05)
+	Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+	Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+	
+
+	TNG100 = TNG100[TNG100['Npart'] > 1.e3]
+
+	# plt.hist(TNG100['mass_halo'][(TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars']< 11.5)],bins=20)
+	# plt.xlabel('log10 Halo mass')
+	# plt.ylabel('Histogram Count')
+	# plt.show()
+	# exit()
+
+	massrange_1 = np.where((TNG100['mass_stars'] > 10.5) & (TNG100['mass_stars'] <= 11))[0]
+	massrange_2 = np.where((TNG100['mass_stars'] > 11) & (TNG100['mass_stars'] <= 11.5))[0]
+
+	TNG100 = TNG100[massrange_1]
+
+	lowmass = np.where((TNG100['mass_halo'] <= 12))[0]
+	medmass = np.where((TNG100['mass_halo'] > 12) & (TNG100['mass_halo'] <= 13))[0]
+	highmass = np.where( (TNG100['mass_halo'] > 13))[0]
+
+
+	samp1 = TNG100[lowmass]
+	samp2 = TNG100[medmass]
+	samp3 = TNG100[highmass]
+
+
+
+	# print('Ncen', len(TNG100[(TNG100['mass_stars'] > 10.) & (TNG100['mass_stars'] < 11.5) & (TNG100['Type'] < 1)] ))
+	# print('Nsat', len(TNG100[(TNG100['mass_stars'] > 10.) & (TNG100['mass_stars'] < 11.5) & (TNG100['Type']  == 1)]))
+
+	fig = plt.figure(figsize = (10,8))
+
+	gs = gridspec.GridSpec(2, 1, top = 0.95, right = 0.98, bottom  = 0.12, left = 0.08)
+
+	ax1 = fig.add_subplot(gs[0,0])
+	ax2 = fig.add_subplot(gs[1,0],sharex=ax1, sharey=ax1)
+
+
+	# ax1.set_ylabel('Cumulative Historgram')
+	# ax2.set_ylabel('Cumulative Historgram')
+	# ax2.set_xlabel('Asymmetry measure A$_{fr}$')
+
+	# ax1.set_title('lgMstar = (10.5,11]',fontsize=10)
+	# ax2.set_title('lgMstar = (11,11.5]',fontsize=10)
+
+
+	samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+								dsd.control_samples([samp1['Afr'],samp2['Afr']],Afr_bins,[np.log10(samp1['Npart']),np.log10(samp2['Npart'])],Npart_bins)
+
+	dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+			 axis = ax1,names=['lgM$_h$ < 12 ({})'.format(len(lowmass)),'lgM$_h$ = (12,13] ({})'.format(len(medmass))])
+
+	samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+								dsd.control_samples([samp2['Afr'],samp3['Afr']],Afr_bins,[np.log10(samp2['Npart']),np.log10(samp3['Npart'])],Npart_bins)
+
+	dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+			 axis = ax2,names=['lgM$_h$ = (12,13] ({})'.format(len(medmass)),'lgM$_h$ > 13 ({})'.format(len(highmass))])
+
+	
+	ax1.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 16)
+	ax2.tick_params(axis = 'both', which = 'both', direction = 'in', labelsize = 16)
+
+	ax1.tick_params(axis = 'x', which = 'both', direction = 'in', labelsize = 0)
+
+
+	plt.show()
+
+def compare_asymmetry_halomass_envsplit():
+
+	particle_mass = 1.4e6
+
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
+	TNG100 = TNG100[TNG100['Npart'] > 1.e3]
+
+	TNG100['mass_stars'] = np.log10(TNG100['mass_stars'])
+	TNG100['mass_halo'] = np.log10(TNG100['mass_halo'])
+	TNG100['SFR'] = np.log10(TNG100['SFR']) - TNG100['mass_stars']
+
+
+	satellites = TNG100[TNG100['Type'] == 1]
+	centrals = TNG100[TNG100['Type'] < 1]
+
+	plt.hist(satellites['mass_halo'],bins=20, histtype='step',label='{}'.format(len(satellites['mass_halo'])))
+	plt.hist(centrals['mass_halo'],bins=20, histtype='step',label='{}'.format(len(centrals['mass_halo'])))
+	plt.xlabel('log10 Halo mass')
+	plt.ylabel('Histogram Count')
+	plt.legend()
+	plt.show()
+	# exit()
+
+
+	Mhrange_1 = np.where((TNG100['mass_halo'] > 11) & (TNG100['mass_halo'] <= 12))[0]
+	Mhrange_2 = np.where((TNG100['mass_halo'] > 12) & (TNG100['mass_halo'] <= 13))[0]
+
+	fig = plt.figure(figsize=(12,6))
+	gs = gridspec.GridSpec(1,4,left=0.08,right=0.99,wspace=0.3) 
+	ax1 = fig.add_subplot(gs[0,0])
+	ax2 = fig.add_subplot(gs[0,1])
+	ax3 = fig.add_subplot(gs[0,2])
+	ax4 = fig.add_subplot(gs[0,3])
+	ax1.set_ylabel('Cumulative Histogram',fontsize = 15)
+	ax2.set_ylabel('Histogram Density',fontsize = 15)
+	ax3.set_ylabel('Histogram Density',fontsize = 15)
+	ax4.set_ylabel('Histogram Density',fontsize = 15)
+
+	ax1.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+	ax2.set_xlabel('lgMh',fontsize=15)
+	ax3.set_xlabel('lgMstar',fontsize=15)
+	ax4.set_xlabel('lgNpart',fontsize=15)
+
+
+
+	massranges = [Mhrange_1,Mhrange_2]
+	axes = [ax1,ax2]
+	colors = ['Green','Orange']
+
+	# ax1.set_title('lgMstar = (10.5,11]',fontsize=10)
+	# ax2.set_title('lgMstar = (11,11.5]',fontsize=10)
+	# ax2.set_xlabel('Asymmetry measure A$_{fr}$')
+
+	for ii in range(len(massranges)):
+
+		TNG_samp = TNG100[massranges[ii]]
+
+
+		satellites = TNG_samp[TNG_samp['Type'] == 1]
+		centrals = TNG_samp[TNG_samp['Type'] < 1]
+
+
+		ax1.hist(satellites['Afr'],bins=np.arange(1,2.2,0.05)
+							,histtype='step',density=True,cumulative=True,lw = 2,color = colors[ii],ls=':')
+		ax1.hist(centrals['Afr'],bins=np.arange(1,2.2,0.05)
+							,histtype='step',density=True,cumulative=True,lw = 2,color = colors[ii],ls='--')
+		# ax1.hist(TNG_samp['Afr'],bins=np.arange(1,2.2,0.05)
+							# ,histtype='step',density=True,cumulative=True,lw = 2,color = colors[ii],ls='-')
+
+		ax2.hist(satellites['mass_halo'],bins=10
+							,histtype='step',density=True,lw = 2,color = colors[ii],ls=':')
+		ax2.hist(centrals['mass_halo'],bins=10
+							,histtype='step',density=True,lw = 2,color = colors[ii],ls='--')
+		# ax2.hist(TNG_samp['mass_halo'],bins=10
+							# ,histtype='step',density=True,lw = 2,color = colors[ii],ls='-')
+
+		ax3.hist(satellites['mass_stars'],bins=10
+							,histtype='step',density=True,lw = 2,color = colors[ii],ls=':')
+		ax3.hist(centrals['mass_stars'],bins=10
+							,histtype='step',density=True,lw = 2,color = colors[ii],ls='--')
+		# ax3.hist(TNG_samp['mass_stars'],bins=10
+							# ,histtype='step',density=True,lw = 2,color = colors[ii],ls='-')
+
+
+		ax4.hist(np.log10(satellites['Npart']),bins=10
+							,histtype='step',density=True,lw = 2,color = colors[ii],ls=':')
+		ax4.hist(np.log10(centrals['Npart']),bins=10
+							,histtype='step',density=True,lw = 2,color = colors[ii],ls='--')
+		# ax4.hist(np.log10(TNG_samp['Npart']),bins=10
+							# ,histtype='step',density=True,lw = 2,color = colors[ii],ls='-')
+
+		
+
+	fig.savefig('/media/data/simulations/IllustrisTNG/figures/Afr_hist_Mh_envsplit.png')	
+	plt.show()
+	exit()
+
+def Afr_satellites_Rvir():
+
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
+	good = np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]
+
+	TNG100['Rvir'] = np.cbrt(np.array(TNG100['mass_halo'])* 4.3e-3 / (100 * 70*70 * 1.e-6 * 1.e-6) )*1.e-6
+	# exit()
+	pos = ['pos_rel_x','pos_rel_y','pos_rel_z']
+	vel = ['vel_rel_x','vel_rel_y','vel_rel_z']
+
+
+	TNG100['rad'] = np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
+	TNG100['vrel'] = np.sqrt(np.nansum((np.array([TNG100[v] for v in vel]).T)**2.e0, axis=1))
+
+
+	
+	TNG100 = TNG100[(TNG100['Npart'] > 5.e2)]
+
+	sats = TNG100[TNG100['Type'] == 1]
+
+	# sats = sats[(sats['Npart'] > 5.e2) & (sats['mass_halo'] < 1.e12)  & (sats['mass_halo'] > 10.**(11.4)) ]
+	# sat_inside = np.where(sats['rad']*1.e-3 < sats['Rvir'])[0]
+	# sat_outside = np.where(sats['rad']*1.e-3 > sats['Rvir'])[0]
+	# print(sats)
+	# grp_sizes = np.zeros(len(sats))
+	# for ii in range(len(sats)):
+	# 	grp = sats['groupnr'][ii]
+	# 	ingrp = np.where(sats['groupnr'] == grp)[0]
+	# 	grp_sizes[ii] = len(ingrp)
+	# plt.hist(grp_sizes[sat_inside],bins=np.arange(0.5,9.5),alpha=0.6)
+	# plt.hist(grp_sizes[sat_outside],bins=np.arange(0.5,9.5),alpha=0.4)
+	# plt.show()
+	# exit()
+
+	# print(len(sats))
+	# print(len(sats[sats['rad']*1.e-3 < sats['Rvir']]['Afr']))
+	# print(len(sats[sats['rad']*1.e-3 > sats['Rvir']]['Afr']))
+	# exit()
+
+	plot1=False
+	plot2=False
+	plot_lowMh_mstar = True
+
+	if plot1:
+
+		fig = plt.figure(figsize=(12,6))
+		gs = gridspec.GridSpec(1,4,left=0.08,right=0.99,wspace=0.3) 
+		ax1 = fig.add_subplot(gs[0,0])
+		ax2 = fig.add_subplot(gs[0,1])
+		ax3 = fig.add_subplot(gs[0,2])
+		ax4 = fig.add_subplot(gs[0,3])
+		ax1.set_ylabel('Cumulative Histogram',fontsize = 15)
+		ax2.set_ylabel('Histogram Density',fontsize = 15)
+		ax3.set_ylabel('Histogram Density',fontsize = 15)
+		ax4.set_ylabel('Histogram Density',fontsize = 15)
+
+		ax1.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+		ax2.set_xlabel('lgMh',fontsize=15)
+		ax3.set_xlabel('lgMstar',fontsize=15)
+		ax4.set_xlabel('lgNpart',fontsize=15)
+
+
+		ax1.hist(sats[sats['rad']*1.e-3 < sats['Rvir']]['Afr'],bins=np.arange(1,2.2,0.05)
+								,histtype='step',density=True,cumulative=True,lw = 2)
+		ax1.hist(sats[sats['rad']*1.e-3 > sats['Rvir']]['Afr'],bins=np.arange(1,2.2,0.05)
+								,histtype='step',density=True,cumulative=True,lw = 2)
+		
+		ax2.hist(np.log10(sats[sats['rad']*1.e-3 < sats['Rvir']]['mass_halo']),bins=10
+								,histtype='step',density=True,lw = 2)
+		ax2.hist(np.log10(sats[sats['rad']*1.e-3 > sats['Rvir']]['mass_halo']),bins=10
+								,histtype='step',density=True,lw = 2)
+
+		ax3.hist(np.log10(sats[sats['rad']*1.e-3 < sats['Rvir']]['mass_stars']),bins=10
+								,histtype='step',density=True,lw = 2)
+		ax3.hist(np.log10(sats[sats['rad']*1.e-3 > sats['Rvir']]['mass_stars']),bins=10
+								,histtype='step',density=True,lw = 2)
+
+		ax4.hist(np.log10(sats[sats['rad']*1.e-3 < sats['Rvir']]['Npart']),bins=10
+								,histtype='step',density=True,lw = 2,label='Inside Rvir')
+		ax4.hist(np.log10(sats[sats['rad']*1.e-3 > sats['Rvir']]['Npart']),bins=10
+								,histtype='step',density=True,lw = 2,label='Outside Rvir')
+
+		ax4.legend()
+
+		fig.savefig('/media/data/simulations/IllustrisTNG/figures/sats_Rvir_asym.png')
+		plt.show()
+		exit()
+
+
+	if plot2:
+
+		fig = plt.figure(figsize=(18,15))
+		gs = gridspec.GridSpec(3,3,left=0.08,right=0.99,wspace=0.3,hspace=0.3,top=0.99) 
+		
+
+		for ii in range(3):
+			if ii == 0:
+				TNG_samp = TNG100[(TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] < 1.e12)  & (TNG100['mass_halo'] > 10.**(11.4))  ]
+			if ii == 1:
+				TNG_samp = TNG100[(TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] < 1.e13) & (TNG100['mass_halo'] > 1.e12)]
+			if ii == 2:
+				TNG_samp = TNG100[(TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] > 1.e13)]
+
+			sats = TNG_samp[TNG_samp['Type'] == 1]
+
+			ax1 = fig.add_subplot(gs[ii,0])
+			ax2 = fig.add_subplot(gs[ii,1])
+			ax3 = fig.add_subplot(gs[ii,2])
+			
+			ax1.set_ylabel('Cumulative Histogram',fontsize = 15)
+			ax2.set_ylabel('Histogram Density',fontsize = 15)
+			ax3.set_ylabel('Histogram Density',fontsize = 15)
+
+			ax1.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+			ax2.set_xlabel('lgMh',fontsize=15)
+			ax3.set_xlabel('lgMstar',fontsize=15)
+
+
+			sat_inside = sats[sats['rad']*1.e-3 < sats['Rvir']]
+			sat_outside = sats[sats['rad']*1.e-3 > sats['Rvir']]
+
+			samples = [sat_inside['Afr'],sat_outside['Afr']]
+			controls = [np.log10(sat_inside['Npart']),np.log10(sat_outside['Npart'])]
+
+			Afr_bins = np.arange(1,2.5,0.05)
+			Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+			Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+			
+
+			samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+										dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+
+			dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+						axis = ax1, names=['Inside R$_{{vir}}$ ({})'.format(len(sat_inside)),'Outside R$_{{vir}}$ ({})'.format(len(sat_outside))])
+
+			ax2.hist(np.log10(sat_inside['mass_halo']),bins=10
+									,histtype='step',density=True,lw = 2, color='Orange')
+			ax2.hist(np.log10(sat_outside['mass_halo']),bins=10
+									,histtype='step',density=True,lw = 2, color='Green')
+
+			ax3.hist(np.log10(sat_inside['mass_stars']),bins=np.arange(9,12.25,0.1)
+									,histtype='step',density=True,lw = 2, color='Orange')
+			ax3.hist(np.log10(sat_outside['mass_stars']),bins=np.arange(9,12.25,0.1)
+									,histtype='step',density=True,lw = 2, color='Green')
+
+
+		fig.savefig('/media/data/simulations/IllustrisTNG/figures/sats_Rvir_asym_manyhalo_.png')
+		plt.show()
+		exit()
+
+
+
+	if plot_lowMh_mstar:
+		
+		
+
+
+		fig = plt.figure(figsize=(18,15))
+		gs = gridspec.GridSpec(3,3,left=0.08,right=0.99,wspace=0.3,hspace=0.3,top=0.99) 
+		
+
+
+		ax1 = fig.add_subplot(gs[0,0])
+		ax2 = fig.add_subplot(gs[0,1])
+		ax3 = fig.add_subplot(gs[0,2])
+
+		ax4 = fig.add_subplot(gs[1,0])
+		ax5 = fig.add_subplot(gs[1,1])
+		ax6 = fig.add_subplot(gs[1,2])
+
+		ax7 = fig.add_subplot(gs[2,0])
+		ax8 = fig.add_subplot(gs[2,1])
+		ax9 = fig.add_subplot(gs[2,2])
+		
+		ax1.set_ylabel('Cumulative Histogram',fontsize = 15)
+		ax2.set_ylabel('Histogram Density',fontsize = 15)
+		ax3.set_ylabel('Histogram Density',fontsize = 15)
+
+		ax4.set_ylabel('Cumulative Histogram',fontsize = 15)
+		ax5.set_ylabel('Histogram Density',fontsize = 15)
+		ax6.set_ylabel('Histogram Density',fontsize = 15)
+
+		ax7.set_ylabel('Cumulative Histogram',fontsize = 15)
+		ax8.set_ylabel('Histogram Density',fontsize = 15)
+		ax9.set_ylabel('Histogram Density',fontsize = 15)
+
+		ax1.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+		ax2.set_xlabel('lgMh',fontsize=15)
+		ax3.set_xlabel('lgMstar',fontsize=15)
+
+		ax4.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+		ax5.set_xlabel('lgMh',fontsize=15)
+		ax6.set_xlabel('lgMstar',fontsize=15)
+
+		ax7.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+		ax8.set_xlabel('lgMh',fontsize=15)
+		ax9.set_xlabel('lgMstar',fontsize=15)
+
+
+		TNG_samp = TNG100[(TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] < 1.e12)  & (TNG100['mass_halo'] > 10.**(11.4))  ]
+
+		sats = TNG_samp[TNG_samp['Type'] == 1]
+
+		sat_inside = sats[sats['rad']*1.e-3 < sats['Rvir']]
+		sat_outside = sats[sats['rad']*1.e-3 > sats['Rvir']]
+
+		lgMstar_dist = [np.log10(sat_inside['mass_stars']),np.log10(sat_outside['mass_stars'])]
+		Afr_dist = [sat_inside['Afr'],sat_outside['Afr']]
+
+		Afr_bins = np.arange(1,2.5,0.05)
+		lgMstar_bins = np.arange(9,11,0.1)
+		lgMh_bins = np.arange(11,12,0.1)
+
+		##### plot just Npart control
+		samples = [sat_inside['Afr'],sat_outside['Afr']]
+		controls = [np.log10(sat_inside['Npart']),np.log10(sat_outside['Npart'])]
+		Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+		Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+		samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+									dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+		dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+					axis=ax1,names=['Inside R$_{{vir}}$ ({})'.format(len(samples[0])),'Outside R$_{{vir}}$ ({})'.format(len(samples[1]))])					
+
+		ax3.hist(np.log10(sat_inside['mass_stars']),bins=lgMstar_bins,density = True,lw=2, histtype='step',color='Orange')
+		ax3.hist(np.log10(sat_outside['mass_stars']),bins=lgMstar_bins,density = True,lw=2, histtype='step',color='Green')
+
+		ax2.hist(np.log10(sat_inside['mass_halo']),bins=lgMh_bins,density = True,lw=2, histtype='step',color='Orange')
+		ax2.hist(np.log10(sat_outside['mass_halo']),bins=lgMh_bins,density = True,lw=2, histtype='step',color='Green')
+
+
+		###### plot Npart control after a lgMstar control
+
+		samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+										dsd.control_samples(Afr_dist,Afr_bins,lgMstar_dist,lgMstar_bins, Niter=1)
+	
+
+		sat_inside = sat_inside[indexes_all_iter[0][0]]
+		sat_outside = sat_outside[indexes_all_iter[1][0]]
+
+		samples = [sat_inside['Afr'],sat_outside['Afr']]
+		controls = [np.log10(sat_inside['Npart']),np.log10(sat_outside['Npart'])]
+		Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+		Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+		samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+									dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+		dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+					axis=ax4,names=['Inside R$_{{vir}}$ ({})'.format(len(samples[0])),'Outside R$_{{vir}}$ ({})'.format(len(samples[1]))])					
+
+
+		ax6.hist(np.log10(sat_inside['mass_stars']),bins=lgMstar_bins,density = True,lw=2, histtype='step',color='Orange')
+		ax6.hist(np.log10(sat_outside['mass_stars']),bins=lgMstar_bins,density = True,lw=2, histtype='step',color='Green')
+
+		ax5.hist(np.log10(sat_inside['mass_halo']),bins=lgMh_bins,density = True,lw=2, histtype='step',color='Orange')
+		ax5.hist(np.log10(sat_outside['mass_halo']),bins=lgMh_bins,density = True,lw=2, histtype='step',color='Green')
+
+
+		###### plot Npart control after a lgMstar control and an lgMh control
+
+		lgMh_dist = [np.log10(sat_inside['mass_halo']),np.log10(sat_outside['mass_halo'])]
+
+		samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+										dsd.control_samples(Afr_dist,Afr_bins,lgMh_dist,lgMh_bins, Niter=1)
+	
+		sat_inside = sat_inside[indexes_all_iter[0][0]]
+		sat_outside = sat_outside[indexes_all_iter[1][0]]
+
+		samples = [sat_inside['Afr'],sat_outside['Afr']]
+		controls = [np.log10(sat_inside['Npart']),np.log10(sat_outside['Npart'])]
+		Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+		Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+		samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+									dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+		dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+					axis=ax7,names=['Inside R$_{{vir}}$ ({})'.format(len(samples[0])),'Outside R$_{{vir}}$ ({})'.format(len(samples[1]))])					
+
+
+
+		ax9.hist(np.log10(sat_inside['mass_stars']),bins=lgMstar_bins,density = True,lw=2, histtype='step',color='Orange')
+		ax9.hist(np.log10(sat_outside['mass_stars']),bins=lgMstar_bins,density = True,lw=2, histtype='step',color='Green')
+
+		ax8.hist(np.log10(sat_inside['mass_halo']),bins=lgMh_bins,density = True,lw=2, histtype='step',color='Orange')
+		ax8.hist(np.log10(sat_outside['mass_halo']),bins=lgMh_bins,density = True,lw=2, histtype='step',color='Green')
+
+		fig.savefig('/media/data/simulations/IllustrisTNG/figures/sats_Rvir_asym_lowMh_lgMstar_sample.png')
+		plt.show()
+		exit()
+
+
+
+
+
+		
+
+
+
+	# grp_sigma = np.zeros(len(TNG100))
+	# for grp in np.array(np.unique(TNG100['groupnr'])):
+	# 	ingrp = np.where(TNG100['groupnr'] == grp)[0]
+	# 	if len(ingrp) > 4:
+	# 		grp_sigma[ingrp] = np.std(vrel[ingrp][vrel[ingrp] != 0])
+	# 	else:
+	# 		grp_sigma[ingrp] = -1
+
+
+	# rad = rad[grp_sigma != -1]
+	# Rvir = Rvir[grp_sigma != -1]
+	# vrel = vrel[grp_sigma != -1]
+	# grp_sigma = grp_sigma[grp_sigma != -1]
+
+	# plt.scatter(rad*1.e-3/Rvir, vrel/grp_sigma,s=2)
+	# plt.show()
+
+def Afr_halo_phasespace():
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
+
+	TNG100['Rvir'] = np.cbrt(np.array(TNG100['mass_halo'])* 4.3e-3 / (100 * 70*70 * 1.e-6 * 1.e-6) ) *1.e-6
+	TNG100['V200'] = np.sqrt(4.3e-3 * TNG100['mass_halo'] / (TNG100['Rvir']*1.e6))
+
+	# exit()
+	pos = ['pos_rel_x','pos_rel_y','pos_rel_z']
+	vel = ['vel_rel_x','vel_rel_y','vel_rel_z']
+
+
+	# TNG100['vrel'] = np.sqrt(np.nansum((np.array([TNG100[v] for v in vel]).T)**2.e0, axis=1))
+
+	positions = np.array([TNG100[p] for p in pos]).T
+	velocities = np.array([TNG100[v] for v in vel]).T
+
+	TNG100['rad'] = np.sqrt(np.nansum(positions**2.e0, axis=1))
+
+
+	# print(positions)
+	# print(velocities)
+	# print(positions * velocities)
+	# print(np.nansum(positions*velocities, axis=1))
+
+
+	TNG100['vrad'] = (np.nansum(positions*velocities, axis=1) / TNG100['rad'] )+ 70 * TNG100['rad']*1.e-3 
+						
+
+	stats = Table.read('/media/data/simulations/IllustrisTNG/data/TNG_sym_percentile_stats.dat', format='ascii')					
+
+	Npart_HIweight = stats['Npart_HIweight']
+	Npart = stats['Npart']
+	P40_Afr = stats['P40']
+	P50_Afr = stats['P50']
+	P60_Afr = stats['P60']
+	P70_Afr = stats['P70']
+	P80_Afr = stats['P80']
+	P90_Afr = stats['P90']
+
+	P40_fit, P40_fit_covar = curve_fit(func,Npart_HIweight,P40_Afr)
+	P50_fit, P50_fit_covar = curve_fit(func,Npart_HIweight,P50_Afr)
+	P60_fit, P60_fit_covar = curve_fit(func,Npart_HIweight,P60_Afr)
+	P70_fit, P70_fit_covar = curve_fit(func,Npart_HIweight,P70_Afr)
+	P80_fit, P80_fit_covar = curve_fit(func,Npart_HIweight,P80_Afr)	
+	P90_fit, P90_fit_covar = curve_fit(func,Npart_HIweight,P90_Afr)	
+
+	
+
+
+
+
+	# plt.scatter(TNG100['rad'][(TNG100['mass_halo']<1.e12) & (TNG100['Type']==1)]*1e-3/TNG100['Rvir'][(TNG100['mass_halo']<1.e12) & (TNG100['Type']==1)],TNG100['vrad'][(TNG100['mass_halo']<1.e12)&  (TNG100['Type']==1)],c='Grey',alpha=0.5,s=10)
+
+	TNG = TNG100[(TNG100['Npart'] > 5.e2)]
+	
+	# sats = TNG[(TNG['Type'] == 1) & (TNG['mass_halo'] > 1.e13)]
+	# sats1 = TNG100[(TNG100['Type'] == 1) & (TNG100['mass_halo'] > 1.e13)]
+	# sats_outside = TNG100[(TNG100['Type'] == 1) & (TNG100['mass_halo'] > 1.e13) & (TNG100['rad']*1.e-3 > TNG100['Rvir']) ]
+	# sats_inside = TNG100[(TNG100['Type'] == 1) & (TNG100['mass_halo'] > 1.e13) & (TNG100['rad']*1.e-3 < TNG100['Rvir']) ]
+
+	sats = TNG[(TNG['Type'] == 1) & (TNG['mass_halo'] < 1.e12)]
+	sats1 = TNG100[(TNG100['Type'] == 1) & (TNG100['mass_halo'] < 1.e12)]
+
+	# sats_outside = TNG100[(TNG100['Type'] == 1) & (TNG100['mass_halo'] < 1.e12) & (TNG100['rad']*1.e-3 > TNG100['Rvir']) ]
+	# sats_inside = TNG100[(TNG100['Type'] == 1) & (TNG100['mass_halo'] < 1.e12) & (TNG100['rad']*1.e-3 < TNG100['Rvir']) ]
+
+
+
+
+	sym_index = []
+	asym_index = []
+	ind = []
+	# for ii in range(len(sats)):
+	# 	if (sats['Afr'][ii] > func(sats['Npart'][ii],P80_fit[0],P80_fit[1]) + 0.5):
+	# 		asym_index.extend([ii])
+	# 	elif (sats['Afr'][ii] > func(sats['Npart'][ii],P80_fit[0],P80_fit[1]) + 0.2) & (sats['Afr'][ii] < func(sats['Npart'][ii],P80_fit[0],P80_fit[1]) + 0.5):
+	# 		sym_index.extend([ii])
+	# 	elif sats['Afr'][ii]< func(sats['Npart'][ii],P80_fit[0],P80_fit[1]) + 0.2:
+	# 		ind.extend([ii])
+	for ii in range(len(sats)):
+		if (sats['Afr'][ii] > func(sats['Npart'][ii],P80_fit[0],P80_fit[1]) + 0.1):
+			asym_index.extend([ii])
+		elif (sats['Afr'][ii] < func(sats['Npart'][ii],P60_fit[0],P60_fit[1])) :
+			sym_index.extend([ii])
+
+
+
+	sym = sats[sym_index]
+	asym = sats[asym_index]
+	# ind = sats[ind]
+
+	plt.scatter(sats['Npart'],sats['Afr'],color='Grey')
+	plt.scatter(sym['Npart'],sym['Afr'],color='Green')
+	plt.scatter(asym['Npart'],asym['Afr'],color='Orange')
+	# plt.scatter(ind['Npart'],ind['Afr'],color='Black')
+	plt.plot(np.linspace(500,20000,5000),func(np.linspace(500,20000,5000),P90_fit[0],P90_fit[1])+0.1,color='black')
+	plt.plot(np.linspace(500,20000,5000),func(np.linspace(500,20000,5000),P50_fit[0],P50_fit[1]),color='black')
+	plt.xscale('log')
+	plt.show()
+	# exit()
+
+	fig,ax  = plt.subplots()
+	plt.scatter(sats1['rad']*1.e-3/sats1['Rvir'],sats1['vrad']/sats1['V200'],color='Grey',s=5)
+
+	img = ax.scatter(sats['rad']*1e-3/sats['Rvir'],sats['vrad']/sats['V200'],c=np.log10(sats['Afr']),s=10)
+
+	ax.plot([0.1,7],[0,0],ls=':',color='Black')
+	ax.plot([1,1],[-3,3],ls=':',color='Black')
+	# ax.set_xscale('log')
+	ax.set_ylabel('Vrad / V200')
+	ax.set_xlabel('R/Rvir')
+	ax.set_ylim([-3,3])
+	ax.set_xlim([0.05,7])
+	# ax.set_title('lgMh > 1.e13')
+	ax.set_title('lgMh < 1.e12')
+	plt.colorbar(img)
+
+
+	import splotch
+	# splotch.sigma_cont(sym['rad']*1.e-3/sym['Rvir'],sym['vrad']/sym['V200'], percent = [68], ax = ax,
+			# bin_type='edges',bins=[np.logspace(np.log10(0.05),np.log10(7),30),np.linspace(-3,3,10)],
+			 # c='Red', output=True, plot_kw = {'linewidths':2})
+	splotch.sigma_cont(asym['rad']*1.e-3/asym['Rvir'],asym['vrad']/asym['V200'], percent = [68], ax = ax,
+			bin_type='edges',bins=[np.logspace(np.log10(0.05),np.log10(7),30),np.linspace(-3,3,10)],
+			 c='Blue', output=True, plot_kw = {'linewidths':2})
+	# splotch.sigma_cont(ind['rad']*1.e-3/ind['Rvir'],ind['vrad']/ind['V200'], percent = [68], ax = ax,
+	# 		bin_type='edges',bins=[np.logspace(np.log10(0.05),np.log10(7),30),np.linspace(-3,3,10)],
+	# 		 c='Black', output=True, plot_kw = {'linewidths':2})
+	fig.savefig('/media/data/simulations/IllustrisTNG/figures/stacked_phasespace_lgMh12.png')
+	plt.show()
+	exit()
 
 def compare_xGASS_TNG100():
 
@@ -1237,9 +2028,9 @@ def compare_xGASS_TNG100():
 
 	lgMstar_list = [9,9.5,10,10.5,11,11.5]
 
-	# lgMstar_low = 10
-	# lgMstar_high = 10.5
-	sSFR_low = -13
+	lgMstar_low = 9.3
+	lgMstar_high = 9.8
+	sSFR_low = -10.8
 	sSFR_high = -8.5
 
 	fig = plt.figure(figsize = (20,20))
@@ -1296,8 +2087,168 @@ def compare_xGASS_TNG100():
 	plt.show()
 
 
+def compare_sat_cent():
+	particle_mass = 1.4e6
+	TNG100 = Table.read('/media/data/simulations/IllustrisTNG/TNG100_galdata_measured_v2.ascii',format='ascii')
+	
+	TNG100['Npart'] = TNG100['Sint'] / particle_mass
+
+	good = np.where((TNG100['Sint']/particle_mass >= 1.e3))[0]
+
+	TNG100['Rvir'] = np.cbrt(np.array(TNG100['mass_halo'])* 4.3e-3 / (100 * 70*70 * 1.e-6 * 1.e-6) )*1.e-6
+	# exit()
+	pos = ['pos_rel_x','pos_rel_y','pos_rel_z']
+	vel = ['vel_rel_x','vel_rel_y','vel_rel_z']
 
 
+	TNG100['rad'] = np.sqrt(np.nansum((np.array([TNG100[p] for p in pos]).T)**2.e0, axis=1))
+	TNG100['vrel'] = np.sqrt(np.nansum((np.array([TNG100[v] for v in vel]).T)**2.e0, axis=1))
+
+	plot1=False
+	plot2=True
+
+	if plot1:
+
+		fig = plt.figure(figsize=(18,15))
+		gs = gridspec.GridSpec(3,3,left=0.08,right=0.99,wspace=0.3,hspace=0.3,top=0.99) 
+		
+		for ii in range(3):
+			if ii == 0:
+				TNG_samp = TNG100[(TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] < 1.e12)  & (TNG100['mass_halo'] > 10.**(11.4))  ]
+			if ii == 1:
+				TNG_samp = TNG100[(TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] < 1.e13) & (TNG100['mass_halo'] > 1.e12)]
+			if ii == 2:
+				TNG_samp = TNG100[(TNG100['Npart'] > 5.e2) & (TNG100['mass_halo'] > 1.e13)]
+
+			sats = TNG_samp[TNG_samp['Type'] == 1]
+			cents = TNG_samp[TNG_samp['Type'] != 1]
+
+			ax1 = fig.add_subplot(gs[ii,0])
+			ax2 = fig.add_subplot(gs[ii,1])
+			ax3 = fig.add_subplot(gs[ii,2])
+			
+			ax1.set_ylabel('Cumulative Histogram',fontsize = 15)
+			ax2.set_ylabel('Histogram Density',fontsize = 15)
+			ax3.set_ylabel('Histogram Density',fontsize = 15)
+
+			ax1.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+			ax2.set_xlabel('lgMh',fontsize=15)
+			ax3.set_xlabel('lgMstar',fontsize=15)
+
+
+			sat_inside = sats[sats['rad']*1.e-3 < sats['Rvir']]
+			sat_outside = sats[sats['rad']*1.e-3 > sats['Rvir']]
+
+			samples = [cents['Afr'],sat_outside['Afr']]
+			controls = [np.log10(cents['Npart']),np.log10(sat_outside['Npart'])]
+
+			Afr_bins = np.arange(1,2.5,0.05)
+			Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+			Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+			
+
+			samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+										dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+
+			dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+						axis = ax1, names=['Centrals ({})'.format(len(cents)),'Satellites > R$_{{vir}}$ ({})'.format(len(sat_outside))])
+
+			ax2.hist(np.log10(cents['mass_halo']),bins=10
+									,histtype='step',density=True,lw = 2, color='Orange')
+			ax2.hist(np.log10(sat_outside['mass_halo']),bins=10
+									,histtype='step',density=True,lw = 2, color='Green')
+
+			ax3.hist(np.log10(cents['mass_stars']),bins=np.arange(9,12.25,0.1)
+									,histtype='step',density=True,lw = 2, color='Orange')
+			ax3.hist(np.log10(sat_outside['mass_stars']),bins=np.arange(9,12.25,0.1)
+									,histtype='step',density=True,lw = 2, color='Green')
+
+
+		fig.savefig('/media/data/simulations/IllustrisTNG/figures/sats_cents_asym_manyhalo_.png')
+		plt.show()
+		exit()
+
+	if plot2:
+
+		sats = TNG100[(TNG100['Type'] == 1) & (TNG100['Npart']>5.e2) ]
+		cents = TNG100[(TNG100['Type'] != 1) & (TNG100['Npart']>5.e2)]
+		sat_outside = sats[sats['rad']*1.e-3 > sats['Rvir']]
+
+
+		Afr_bins = np.arange(1,2.5,0.05)
+		Npart_bins = np.arange(np.log10(500),np.log10(5000)+0.1,0.1)
+		Npart_bins = np.append(Npart_bins,np.array([np.log10(1.e6)]))
+
+
+		fig = plt.figure(figsize=(18,6))
+		gs = gridspec.GridSpec(1,4,left=0.08,right=0.99,wspace=0.3,hspace=0.3,top=0.99) 
+
+		ax1 = fig.add_subplot(gs[0,0])
+		ax2 = fig.add_subplot(gs[0,1])
+		ax3 = fig.add_subplot(gs[0,2])
+		ax4 = fig.add_subplot(gs[0,3])
+
+		samples = [cents['Afr'],sat_outside['Afr']]
+		controls = [np.log10(cents['Npart']),np.log10(sat_outside['Npart'])]
+
+		# samples_all_hists, samples_all_DAGJKsigma, indexes_all_iter = \
+										# dsd.control_samples(samples,Afr_bins,controls,Npart_bins)
+
+		# dsd.plot_controlled_cumulative_histograms(samples_all_hists,Afr_bins,samples_all_DAGJKsigma,
+						# axis = ax1, names=['Centrals ({})'.format(len(cents)),'Satellites > R$_{{vir}}$ ({})'.format(len(sat_outside))])
+
+
+		ax1.hist(cents['Afr'],bins=Afr_bins,lw=2,histtype='step',density=True,cumulative=True,color='Orange')
+								
+		ax1.hist(sat_outside['Afr'],bins=Afr_bins,lw=2,histtype='step',density=True,cumulative=True,color='Green')
+								
+
+		ax2.hist(np.log10(cents['mass_halo']),bins=10
+									,histtype='step',density=True,lw = 2, color='Orange')
+
+		ax2.hist(np.log10(sat_outside['mass_halo']),bins=10
+									,histtype='step',density=True,lw = 2, color='Green')
+
+		ax3.hist(np.log10(cents['mass_stars']),bins=np.arange(9,12.25,0.1)
+									,histtype='step',density=True,lw = 2, color='Orange',label = 'Centrals ({})'.format(len(cents)))
+
+		ax3.hist(np.log10(sat_outside['mass_stars']),bins=np.arange(9,12.25,0.1)
+									,histtype='step',density=True,lw = 2, color='Green',label = 'Satellites > Rvir ({})'.format(len(sat_outside)))
+
+		ax4.hist(np.log10(cents['Npart']),bins=np.arange(2.6,5,0.1)
+									,histtype='step',density=True,lw = 2, color='Orange')
+
+		ax4.hist(np.log10(sat_outside['Npart']),bins=np.arange(2.6,5,0.1)
+									,histtype='step',density=True,lw = 2, color='Green')
+
+
+
+		ax1.set_ylabel('Cumulative Histogram',fontsize = 15)
+		ax2.set_ylabel('Histogram Density',fontsize = 15)
+		ax3.set_ylabel('Histogram Density',fontsize = 15)
+		ax4.set_ylabel('Histogram Density',fontsize = 15)
+
+		ax1.set_xlabel('Asymmetry measure A$_{fr}$',fontsize=15)
+		ax2.set_xlabel('lgMh',fontsize=15)
+		ax3.set_xlabel('lgMstar',fontsize=15)
+		ax4.set_xlabel('lgNpart',fontsize=15)
+
+		ax3.legend()
+
+		fig.savefig('/media/data/simulations/IllustrisTNG/figures/cents_sats_allhaloes.png')
+		plt.show()
+		exit()
+
+###########
+
+def SFMS(lgMstar, sigma=0):
+
+	sSFR = -0.344*(lgMstar - 9) - 9.822
+	
+	sSFR += sigma * 0.088 * (lgMstar-9) + 0.188
+
+	return sSFR
 
 	
 def measure_spectrum(spectrum, Vres):
@@ -1601,6 +2552,11 @@ def areal_asymmetry(spectrum, limits, Vres):
 
 	return Sint, Afr
 
+
+def func(x,a,c):
+	E = 1/(a*(x-c))**0.5 + 1.
+	return E
+
 if __name__ == '__main__':
 	# add_extended_measurements()
 	
@@ -1612,7 +2568,6 @@ if __name__ == '__main__':
 	# resolution_completeness_MHI()
 	# resolution_completeness_ratio()
 	# compare_Afrhist_TNGboxes()
-	# compare_asymmetry_halomass()
 
 	# plot_selected_spectra()
 	# check_highmass_SFgals()
@@ -1621,12 +2576,26 @@ if __name__ == '__main__':
 
 	# Afr_halo_phasespace()
 
+	# Afr_satellites_Rvir_sSFR()
+
+	# plot_disturbed_satellites()
+
 	# compare_Afrhist_Npart()
+
+	# compare_asymmetry_halomass()
+	# compare_asymmetry_halomass_envsplit()
+
 
 	# gas_spatial_distribution()
 
 	# compare_xGASS_TNG100()
 
-	compare_asym_gasfraction()
+	# compare_asym_gasfraction()
+
+	Afrhist_satellites_centrals()
+
+	# plot_TNG100_TN100_2()
+
+	# compare_sat_cent()
 
 
